@@ -1,6 +1,10 @@
 """
 Main entry point for the AI Research Assistant application
 FastAPI backend server
+
+**IMPORTANT: Heavy model loading is deferred to lazy initialization**
+This allows the server to start quickly and become ready for health checks.
+Models are only loaded when first requested.
 """
 import logging
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -8,16 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import os
-
 from app.config import API_HOST, API_PORT, OPENAI_API_KEY
 from app.services.document_service import DocumentService
-from app.services.pdf_parser import PDFParser
-from app.services.chunker import TextProcessor
-from app.rag.workflow import RAGWorkflow
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+print("⏳ FastAPI server starting...")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -35,11 +37,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
+# ==================== Lazy Loading for Heavy Services ====================
+# These are initialized on-demand to avoid startup freeze
+_services_cache = {
+    "pdf_parser": None,
+    "text_processor": None,
+    "rag_workflow": None,
+}
+
+# Light-weight service (initialized immediately)
 document_service = DocumentService()
-pdf_parser = PDFParser()
-text_processor = TextProcessor()
-rag_workflow = RAGWorkflow()
+
+def get_pdf_parser():
+    """Lazy load PDF parser"""
+    if _services_cache["pdf_parser"] is None:
+        logger.info("📄 Loading PDF Parser...")
+        from app.services.pdf_parser import PDFParser
+        _services_cache["pdf_parser"] = PDFParser()
+    return _services_cache["pdf_parser"]
+
+def get_text_processor():
+    """Lazy load text processor"""
+    if _services_cache["text_processor"] is None:
+        logger.info("✂️ Loading Text Processor...")
+        from app.services.chunker import TextProcessor
+        _services_cache["text_processor"] = TextProcessor()
+    return _services_cache["text_processor"]
+
+def get_rag_workflow():
+    """Lazy load RAG workflow (heavy - loads all models)"""
+    if _services_cache["rag_workflow"] is None:
+        logger.info("🤖 Loading RAG Workflow (models will be initialized)...")
+        from app.rag.workflow import RAGWorkflow
+        _services_cache["rag_workflow"] = RAGWorkflow()
+        logger.info("✅ RAG Workflow loaded successfully")
+    return _services_cache["rag_workflow"]
 
 # Check OpenAI API key
 if not OPENAI_API_KEY:
@@ -74,6 +106,16 @@ class CitationRequest(BaseModel):
     document_id: str = None
 
 
+class AnalyzeRequest(BaseModel):
+    """Request model for document analysis and chunking"""
+    query: str = None
+    chunk_size: int = 2000
+    chunk_overlap: int = 200
+    method: str = "fixed"
+    compute_embeddings: bool = False
+    preview_count: int = 3
+
+
 class QuizApprovalRequest(BaseModel):
     """Request model for quiz approval"""
     approved: bool
@@ -83,13 +125,20 @@ class QuizApprovalRequest(BaseModel):
 # ==================== Health & Utility ====================
 @app.get("/")
 async def health_check():
-    """Health check endpoint"""
+    """
+    Fast health check endpoint - returns immediately without loading models.
+    This allows Render to verify the server is up and accepting requests.
+    """
+    logger.debug("Health check requested")
     return {
         "status": "healthy",
         "service": "AI Research Assistant",
         "version": "0.1.0",
+        "message": "Server is running. Models load on first request.",
         "agents": ["research", "summarizer", "quiz", "citation"]
     }
+
+print("✅ FastAPI server ready! Health endpoint available at /")
 
 
 # ==================== Document Management ====================
@@ -122,6 +171,8 @@ async def upload_document(file: UploadFile = File(...)):
         
         # Parse and embed document
         logger.info(f"Processing document for RAG: {document_id}")
+        pdf_parser = get_pdf_parser()
+        rag_workflow = get_rag_workflow()
         text_content = pdf_parser.extract_text(contents, file.filename)
         success = rag_workflow.process_document(document_id, text_content)
         
@@ -203,24 +254,121 @@ async def delete_document(document_id: str):
 # ==================== RAG Pipeline Endpoints ====================
 
 @app.post("/api/documents/{document_id}/analyze")
-async def analyze_document(document_id: str, request: QueryRequest):
+async def analyze_document(document_id: str, request: AnalyzeRequest | None = None):
     """
-    Comprehensive document analysis using RAG pipeline
-    
-    Phase 4-7: Embeddings → Retrieval → Generation
+    Analyze a document and optionally return chunk previews for the frontend.
+
+    If the request body is omitted, returns the Phase 2 text analysis payload.
+    If chunking parameters are provided, returns chunking metrics and previews
+    alongside the analysis payload.
     """
     try:
-        logger.info(f"Analyzing document: {document_id}")
-        
-        # Use RAG workflow
-        result = rag_workflow.answer_question(request.query, document_id)
-        
+        file_path = document_service.get_document_path(document_id)
+        if not file_path:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        pdf_parser = get_pdf_parser()
+        parsed_data = pdf_parser.extract_text(str(file_path))
+        full_text = parsed_data.get("full_text", "")
+
+        if parsed_data.get("ocr_error"):
+            logger.warning(
+                f"OCR fallback failed for document {document_id}: {parsed_data.get('ocr_error')}"
+            )
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "document_id": document_id,
+                    "error": "OCR fallback unavailable for this document",
+                    "ocr_error": parsed_data.get("ocr_error"),
+                    "extraction_quality": parsed_data.get("extraction_quality", {}),
+                },
+            )
+
+        logger.debug(
+            f"Analyze requested for {document_id} file={file_path} chars={len(full_text)}"
+        )
+        try:
+            logger.debug(f"Parsed keys: {list(parsed_data.keys())}")
+            logger.debug(f"Extraction quality: {parsed_data.get('extraction_quality')}")
+        except Exception:
+            logger.debug("Parsed data diagnostics unavailable")
+
+        if not full_text or not full_text.strip():
+            logger.warning(f"No text extracted for document {document_id}")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "document_id": document_id,
+                    "error": "No text extracted from document",
+                    "extraction_quality": parsed_data.get("extraction_quality", {}),
+                },
+            )
+
+        text_processor = get_text_processor()
+        analysis = text_processor.process_text(full_text)
+
+        if request is None:
+            return {
+                "success": True,
+                "document_id": document_id,
+                "analysis": analysis,
+            }
+
+        method = (request.method or "fixed").lower()
+        preview_count = max(1, int(request.preview_count or 1))
+
+        if method == "semantic":
+            chunk_result = text_processor.split_into_semantic_chunks(
+                text=full_text,
+                target_chunk_size=max(200, int(request.chunk_size)),
+                min_chunk_size=max(100, int(request.chunk_overlap) or 100),
+                overlap=max(0, int(request.chunk_overlap)),
+                respect_headers=True,
+            )
+            chunks = chunk_result.get("chunks", [])
+            chunk_metadata = chunk_result.get("metadata", {})
+        else:
+            chunks = text_processor.split_into_chunks(
+                full_text,
+                chunk_size=max(1, int(request.chunk_size)),
+                overlap=max(0, int(request.chunk_overlap)),
+            )
+            chunk_metadata = {
+                "chunk_size": int(request.chunk_size),
+                "chunk_overlap": int(request.chunk_overlap),
+                "method": method,
+            }
+
+        preview_chunks = chunks[:preview_count]
+        average_chunk_length = (
+            round(sum(chunk.get("length", 0) for chunk in chunks) / len(chunks), 2)
+            if chunks
+            else 0
+        )
+
+        logger.info(f"Text analysis completed for document: {document_id}")
+
         return {
-            "success": result.get("result", {}).get("status") == "success",
+            "success": True,
             "document_id": document_id,
-            "query": request.query,
-            "result": result.get("result", {})
+            "analysis": analysis,
+            "metrics": {
+                "num_chunks": len(chunks),
+                "avg_chunk_length": average_chunk_length,
+                "embeddings_computed": bool(request.compute_embeddings),
+                "text_length": len(full_text),
+                "word_count": analysis.get("statistics", {}).get("words", 0),
+                "method": method,
+                "chunk_metadata": chunk_metadata,
+            },
+            "preview_chunks": preview_chunks,
+            "message": "Analysis complete" + (" with chunk previews" if request else ""),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error analyzing document: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -237,6 +385,7 @@ async def ask_question(request: QueryRequest):
     try:
         logger.info(f"Question: {request.query[:80]}")
         
+        rag_workflow = get_rag_workflow()
         result = rag_workflow.answer_question(request.query, request.document_id)
         
         return {
@@ -263,6 +412,7 @@ async def generate_summary(request: SummaryRequest):
     try:
         logger.info(f"Generating summary for document")
         
+        rag_workflow = get_rag_workflow()
         result = rag_workflow.summarize(request.document_id)
         
         return {
@@ -286,6 +436,7 @@ async def generate_quiz(request: QuizRequest):
     try:
         logger.info(f"Generating quiz for document: {request.document_id}")
         
+        rag_workflow = get_rag_workflow()
         result = rag_workflow.generate_quiz(
             request.document_id,
             request.num_questions,
@@ -313,6 +464,7 @@ async def get_pending_quizzes():
     Human-in-the-Loop feature (Phase 8)
     """
     try:
+        rag_workflow = get_rag_workflow()
         result = rag_workflow.quiz_agent.get_pending_quizzes()
         return result
     except Exception as e:
@@ -328,6 +480,7 @@ async def approve_quiz(quiz_id: str, request: QuizApprovalRequest):
     Human-in-the-Loop feature (Phase 8)
     """
     try:
+        rag_workflow = get_rag_workflow()
         if request.approved:
             result = rag_workflow.quiz_agent.approve_quiz(quiz_id)
             logger.info(f"✅ Quiz approved: {quiz_id}")
@@ -356,6 +509,7 @@ async def get_citations(request: CitationRequest):
     try:
         logger.info(f"Fetching citations for query")
         
+        rag_workflow = get_rag_workflow()
         result = rag_workflow.get_citations(request.query, request.document_id)
         
         return {
@@ -410,6 +564,7 @@ async def parse_document(document_id: str):
             raise HTTPException(status_code=404, detail="Document not found")
         
         # Parse document
+        pdf_parser = get_pdf_parser()
         parsed_data = pdf_parser.extract_text(str(file_path))
         
         logger.info(f"Document parsed successfully: {document_id}")
@@ -424,78 +579,6 @@ async def parse_document(document_id: str):
         raise
     except Exception as e:
         logger.error(f"Error parsing document: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================
-# Phase 2: Advanced Parsing & Text Analysis
-# ============================================
-
-@app.post("/api/documents/{document_id}/analyze")
-async def analyze_text(document_id: str):
-    """
-    Analyze extracted text for structure and content quality
-    
-    Returns detailed analysis of document structure, sections, and quality metrics
-    """
-    try:
-        # Get document file path
-        file_path = document_service.get_document_path(document_id)
-        if not file_path:
-            raise HTTPException(status_code=404, detail="Document not found")
-        
-        # Parse document first
-        parsed_data = pdf_parser.extract_text(str(file_path))
-        full_text = parsed_data.get("full_text", "")
-
-        if parsed_data.get("ocr_error"):
-            logger.warning(f"OCR fallback failed for document {document_id}: {parsed_data.get('ocr_error')}")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "document_id": document_id,
-                    "error": "OCR fallback unavailable for this document",
-                    "ocr_error": parsed_data.get("ocr_error"),
-                    "extraction_quality": parsed_data.get("extraction_quality", {}),
-                },
-            )
-
-        # Diagnostic logging for debugging analyze flow
-        logger.debug(f"Analyze requested for {document_id} file={file_path} chars={len(full_text)}")
-        try:
-            logger.debug(f"Parsed keys: {list(parsed_data.keys())}")
-            logger.debug(f"Extraction quality: {parsed_data.get('extraction_quality')}" )
-        except Exception:
-            logger.debug("Parsed data diagnostics unavailable")
-
-        if not full_text or not full_text.strip():
-            logger.warning(f"No text extracted for document {document_id}")
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "success": False,
-                    "document_id": document_id,
-                    "error": "No text extracted from document",
-                    "extraction_quality": parsed_data.get("extraction_quality", {}),
-                },
-            )
-
-        # Analyze text
-        analysis = text_processor.process_text(full_text)
-        
-        logger.info(f"Text analysis completed for document: {document_id}")
-        
-        return {
-            "success": True,
-            "document_id": document_id,
-            "analysis": analysis
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error analyzing document: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -636,10 +719,11 @@ async def get_text_summary(document_id: str, sentences: int = 3):
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.getenv("PORT", str(API_PORT)))
     uvicorn.run(
         app,
         host=API_HOST,
-        port=API_PORT,
+        port=port,
         log_level="info"
     )
 

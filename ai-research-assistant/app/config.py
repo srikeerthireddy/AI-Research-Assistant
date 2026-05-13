@@ -2,12 +2,10 @@
 Configuration settings for AI Research Assistant
 """
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from the project .env file.
-BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+# Load environment variables
+load_dotenv()
 
 # OpenAI Settings
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -19,8 +17,8 @@ CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "research_documents")
 
 # Server Settings
-API_HOST = os.getenv("API_HOST", "127.0.0.1")
-API_PORT = int(os.getenv("API_PORT", "8000"))
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "8501"))
 
 # Upload Settings
