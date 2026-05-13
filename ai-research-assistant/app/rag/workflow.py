@@ -75,8 +75,19 @@ class RAGWorkflow:
         workflow.add_node("citations", self._citations_node)
         workflow.add_node("format_output", self._format_output)
         
-        # Define edges with routing
-        workflow.add_edge("parse_request", "format_output")  # Route after parsing
+        # Route from the parser to the correct task node.
+        workflow.add_conditional_edges(
+            "parse_request",
+            lambda state: state.get("next", "research"),
+            {
+                "research": "research",
+                "summarize": "summarize",
+                "quiz": "quiz",
+                "citations": "citations",
+            },
+        )
+
+        # Finish each branch with a final output formatter.
         workflow.add_edge("research", "citations")
         workflow.add_edge("summarize", "citations")
         workflow.add_edge("quiz", "format_output")
@@ -96,13 +107,13 @@ class RAGWorkflow:
         
         # Route based on action
         if action == "summarize":
-            return {"next": "summarize", **state}
+            return {**state, "next": "summarize"}
         elif action == "quiz":
-            return {"next": "quiz", **state}
+            return {**state, "next": "quiz"}
         elif action == "cite":
-            return {"next": "citations", **state}
+            return {**state, "next": "citations"}
         else:  # Default to research/answer
-            return {"next": "research", **state}
+            return {**state, "next": "research"}
     
     def _research_node(self, state: Dict) -> Dict:
         """Research/Q&A node"""
@@ -110,8 +121,9 @@ class RAGWorkflow:
         
         query = state.get("query", "")
         document_id = state.get("document_id")
+        top_k = state.get("top_k", 5)
         
-        result = self.research_agent.answer_query(query, document_id)
+        result = self.research_agent.answer_query(query, document_id, top_k=top_k)
         
         return {
             **state,

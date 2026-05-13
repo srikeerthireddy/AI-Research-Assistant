@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # FastAPI Backend
+  backend:
+    build: .
+    container_name: ai-research-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CHROMA_DB_PATH=/app/chroma_db/
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - chroma
+    networks:
+      - ai-network
+
+  # Streamlit Frontend
+  frontend:
+    build: .
+    container_name: ai-research-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app/frontend
+    command: streamlit run frontend/app_enhanced.py --server.port 8501 --server.address 0.0.0.0
+    depends_on:
+      - backend
+    networks:
+      - ai-network
+
+  # Chroma Vector Database (Optional - for production)
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: ai-research-chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./chroma_db:/chroma/data
+    networks:
+      - ai-network
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: ai-research-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    driver: bridge
+
+volumes:
+  chroma_db:
+  uploads:
+  logs:

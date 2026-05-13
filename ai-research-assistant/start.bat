@@ -9,19 +9,23 @@ echo ========================================
 echo.
 
 set "PROJECT_ROOT=%~dp0"
-set "BACKEND_PY=%PROJECT_ROOT%.venv314\Scripts\python.exe"
-set "FRONTEND_PY=%PROJECT_ROOT%.venv314\Scripts\python.exe"
+set "BACKEND_PY=%PROJECT_ROOT%venv\Scripts\python.exe"
+set "FRONTEND_PY=%PROJECT_ROOT%venv\Scripts\python.exe"
 
 if not exist "%BACKEND_PY%" (
-    set "BACKEND_PY=python"
+    echo ERROR: Virtual environment not found at %PROJECT_ROOT%venv\Scripts\python.exe
+    pause
+    exit /b 1
 )
 
 if not exist "%FRONTEND_PY%" (
-    set "FRONTEND_PY=python"
+    echo ERROR: Virtual environment not found at %PROJECT_ROOT%venv\Scripts\python.exe
+    pause
+    exit /b 1
 )
 
 echo [1/3] Checking dependencies...
-pip show fastapi >nul 2>&1
+"%BACKEND_PY%" -m pip show fastapi >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Dependencies not installed. Run: pip install -r requirements.txt
     pause
