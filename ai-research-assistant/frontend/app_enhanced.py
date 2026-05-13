@@ -1,1223 +1,1145 @@
 """
-Enhanced Production-Grade Streamlit Frontend
-AI Research Assistant - Complete Multi-Agent RAG System
-
-Features:
-- Modern website-like UI
-- Voice input support
-- Streaming responses
-- Document comparison
-- Web search integration
-- Multi-page navigation
-- Real-time status updates
+AI Research Assistant - Clean & Modern Frontend
+Organized pipeline workflow: Upload → Parse → Chunk → Analyze
 """
-import json
-import time
-import os
 import streamlit as st
 import requests
-from typing import Optional, List, Dict, Any
+import json
+import os
+from typing import Optional, Dict, List, Tuple
 from datetime import datetime
-from urllib.parse import quote
-import base64
 
 # ==================== Configuration ====================
-API_BASE_URL = os.getenv("API_BASE_URL", "").rstrip("/")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+API_V1_URL = f"{API_BASE_URL}/api/v1/documents"
+
 TIMEOUT_SHORT = 10
 TIMEOUT_LONG = 180
-GOOGLE_SEARCH_API = None  # Set your API key in .env
 
-# ==================== Page Configuration ====================
+# ==================== Page Config ====================
 st.set_page_config(
     page_title="AI Research Assistant",
     page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={
-        "Get Help": "https://github.com",
-        "Report a bug": "https://github.com",
-        "About": "AI Research Assistant v1.0"
-    }
+    initial_sidebar_state="expanded"
 )
 
-# ==================== Custom Styling ====================
+# ==================== Custom CSS ====================
 st.markdown("""
 <style>
-    /* Color Scheme */
-    :root {
-        --primary: #0f766e;
-        --primary-light: #14b8a6;
-        --secondary: #b45309;
-        --tertiary: #1d4ed8;
-        --bg-light: #f8fafc;
-        --bg-white: #ffffff;
-        --text-dark: #0b1220;
-        --text-muted: #64748b;
-        --border-color: #e2e8f0;
-        --success: #10b981;
-        --warning: #f59e0b;
-        --error: #ef4444;
-        --shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
-        --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Space Grotesk', sans-serif;
     }
 
-    /* Global Styles */
-    .stApp {
-        background: linear-gradient(135deg, #f8fafc 0%, #fffbeb 100%);
-        color: var(--text-dark);
-    }
-
-    /* Main Container */
-    .main {
-        background-color: var(--bg-light);
+    h1, h2, h3 {
+        font-family: 'DM Serif Display', serif;
+        letter-spacing: 0.01em;
     }
 
     /* Sidebar Styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(15, 118, 110, 0.95), rgba(255, 255, 255, 0.98));
-        border-right: 1px solid var(--border-color);
+        background: linear-gradient(155deg, #0f172a 0%, #164e63 55%, #0f766e 100%);
     }
-
-    /* Header Styling */
-    .header-container {
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
         color: white;
-        padding: 2.5rem 2rem;
-        border-radius: 12px;
-        margin-bottom: 2rem;
-        box-shadow: var(--shadow-lg);
     }
-
-    .header-container h1 {
-        font-size: 2.5rem;
-        margin: 0;
-        font-weight: 800;
+    
+    /* Main Content */
+    .main {
+        background:
+            radial-gradient(circle at 10% -10%, rgba(20, 184, 166, 0.20), transparent 30%),
+            radial-gradient(circle at 90% 0%, rgba(14, 116, 144, 0.18), transparent 38%),
+            linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
     }
-
-    .header-container p {
-        margin: 0.5rem 0 0 0;
-        font-size: 1.1rem;
-        opacity: 0.95;
-    }
-
-    /* Card Styling */
-    .card {
-        background: var(--bg-white);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
+    
+    /* Cards */
+    .metric-card {
+        background: white;
         padding: 1.5rem;
-        box-shadow: var(--shadow);
-        margin-bottom: 1.5rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #0f766e;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-
-    .card-accent {
-        border-left: 4px solid var(--primary);
+    
+    .success-box {
+        background: #ecfdf5;
+        border-left: 4px solid #10b981;
+        padding: 1rem;
+        border-radius: 0.5rem;
     }
-
-    .card-accent.warning {
-        border-left-color: var(--warning);
+    
+    .error-box {
+        background: #fef2f2;
+        border-left: 4px solid #ef4444;
+        padding: 1rem;
+        border-radius: 0.5rem;
     }
-
-    .card-accent.error {
-        border-left-color: var(--error);
-    }
-
-    .card-accent.success {
-        border-left-color: var(--success);
-    }
-
-    /* Button Styling */
-    .stButton > button {
-        border-radius: 8px;
-        border: none;
+    
+    /* Section Headers */
+    .section-header {
+        font-size: 1.3rem;
         font-weight: 600;
-        padding: 0.75rem 1.5rem;
-        background: linear-gradient(135deg, var(--primary), var(--primary-light));
+        color: #0f766e;
+        margin: 1.5rem 0 0.5rem 0;
+        border-bottom: 2px solid #0f766e;
+        padding-bottom: 0.5rem;
+    }
+
+    .hero-shell {
+        background: linear-gradient(120deg, #0f172a 0%, #155e75 52%, #0ea5a3 100%);
+        border-radius: 18px;
+        padding: 2.2rem;
+        margin-bottom: 1.2rem;
         color: white;
-        transition: all 0.3s ease;
-        box-shadow: var(--shadow);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.22);
+        position: relative;
+        overflow: hidden;
     }
 
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-lg);
-        background: linear-gradient(135deg, var(--primary-light), var(--primary));
-    }
-
-    /* Metric Cards */
-    .metric-box {
-        background: var(--bg-white);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 1.5rem;
-        text-align: center;
-        box-shadow: var(--shadow);
-    }
-
-    .metric-value {
-        font-size: 2.5rem;
-        font-weight: 800;
-        color: var(--primary);
-        margin: 0.5rem 0;
-    }
-
-    .metric-label {
-        font-size: 0.9rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    /* Response Box */
-    .response-box {
-        background: var(--bg-white);
-        border-left: 4px solid var(--primary);
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: var(--shadow);
-    }
-
-    /* Badge */
-    .badge {
-        display: inline-block;
-        padding: 0.4rem 0.8rem;
+    .hero-shell::before {
+        content: "";
+        position: absolute;
+        right: -60px;
+        top: -60px;
+        width: 220px;
+        height: 220px;
         border-radius: 999px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin-right: 0.5rem;
+        background: radial-gradient(circle, rgba(255,255,255,0.28), rgba(255,255,255,0));
+    }
+
+    .hero-kicker {
+        text-transform: uppercase;
+        font-size: 0.72rem;
+        letter-spacing: 0.16em;
+        opacity: 0.82;
         margin-bottom: 0.5rem;
+        font-weight: 600;
     }
 
-    .badge-primary {
-        background: rgba(15, 118, 110, 0.1);
-        color: var(--primary);
+    .hero-title {
+        font-size: clamp(2rem, 4vw, 3rem);
+        margin: 0;
+        line-height: 1.1;
     }
 
-    .badge-success {
-        background: rgba(16, 185, 129, 0.1);
-        color: var(--success);
+    .hero-subtitle {
+        margin-top: 0.8rem;
+        color: rgba(236, 254, 255, 0.92);
+        max-width: 740px;
+        line-height: 1.5;
     }
 
-    .badge-warning {
-        background: rgba(245, 158, 11, 0.1);
-        color: var(--warning);
+    .glass-card {
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(255,255,255,0.9);
+        backdrop-filter: blur(6px);
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
     }
 
-    /* Divider */
-    .divider {
-        height: 1px;
-        background: var(--border-color);
-        margin: 2rem 0;
+    .mini-label {
+        font-size: 0.74rem;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        font-weight: 600;
+        margin-bottom: 0.35rem;
     }
 
-    /* Table Styling */
-    .stDataFrame {
-        border-radius: 8px !important;
+    .mini-value {
+        font-size: 1.7rem;
+        line-height: 1.1;
+        font-weight: 700;
+        color: #0f172a;
     }
 
-    /* Text Area */
-    .stTextArea textarea {
-        border-radius: 8px !important;
-        border: 1px solid var(--border-color) !important;
+    .journey-card {
+        background: linear-gradient(145deg, #ffffff, #f8fafc);
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1rem;
+        min-height: 170px;
+        box-shadow: 0 8px 14px rgba(15, 23, 42, 0.05);
     }
 
-    /* Select Box */
-    .stSelectbox > div > div {
-        border-radius: 8px !important;
-        border: 1px solid var(--border-color) !important;
+    .journey-stage {
+        font-size: 0.8rem;
+        color: #0f766e;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.35rem;
     }
 
-    /* Progress Bar */
-    .stProgress > div > div > div {
-        background-color: var(--primary) !important;
+    .journey-title {
+        margin: 0;
+        color: #0f172a;
+        font-size: 1.06rem;
+        font-weight: 700;
     }
 
-    /* Status Indicator */
-    .status-online {
-        color: var(--success);
+    .journey-meta {
+        margin-top: 0.6rem;
+        color: #475569;
+        font-size: 0.92rem;
+        line-height: 1.45;
     }
 
-    .status-offline {
-        color: var(--error);
+    .focus-card {
+        border-radius: 14px;
+        border: 1px solid #bfdbfe;
+        padding: 1rem;
+        background: linear-gradient(120deg, rgba(239, 246, 255, 0.9), rgba(240, 253, 250, 0.9));
+        min-height: 132px;
     }
 
-    .status-loading {
-        color: var(--warning);
+    .focus-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f172a;
     }
 
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: rgba(15, 118, 110, 0.05);
-        border-radius: 8px;
-        padding: 0.5rem;
-    }
-
-    .stTabs [aria-selected="true"] {
-        background-color: var(--bg-white) !important;
-    }
-
-    /* Expander */
-    .streamlit-expanderHeader {
-        border-radius: 8px !important;
-    }
-
-    /* Code Block */
-    .stCodeBlock {
-        border-radius: 8px !important;
-        background: #1e293b !important;
+    .focus-text {
+        margin-top: 0.55rem;
+        font-size: 0.9rem;
+        color: #334155;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==================== Session State ====================
-if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
-
-if "pending_quizzes" not in st.session_state:
-    st.session_state.pending_quizzes = {}
-
 if "api_connected" not in st.session_state:
     st.session_state.api_connected = False
+if "page" not in st.session_state:
+    st.session_state.page = "Dashboard"
+if "selected_doc" not in st.session_state:
+    st.session_state.selected_doc = None
 
-if "documents_cache" not in st.session_state:
-    st.session_state.documents_cache = []
 
-if "documents_count" not in st.session_state:
-    st.session_state.documents_count = 0
-
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = 0
-
-# ==================== API Helper Functions ====================
-@st.cache_resource
-def get_session():
-    """Create a persistent session for API calls"""
-    session = requests.Session()
-    session.headers.update({"User-Agent": "AI-Research-Assistant/1.0"})
-    return session
-
-def api_call(method: str, path: str, timeout: int = TIMEOUT_SHORT, **kwargs):
-    """Make API calls with error handling"""
+# ==================== Utility Functions ====================
+def check_api():
+    """Check if backend is online"""
     try:
-        url = f"{API_BASE_URL}{path}"
-        response = getattr(get_session(), method.lower())(url, timeout=timeout, **kwargs)
-        return response
-    except requests.exceptions.Timeout:
-        return None
-    except requests.exceptions.ConnectionError:
-        return None
-    except Exception as e:
-        st.error(f"API Error: {str(e)}")
-        return None
+        response = requests.get(f"{API_BASE_URL}/", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
-def check_api_connection() -> bool:
-    """Check if backend API is accessible"""
-    response = api_call("GET", "/", timeout=5)
-    return response is not None and response.status_code == 200
 
-def get_documents_list() -> tuple[List[Dict], int]:
-    """Fetch list of documents from backend"""
-    response = api_call("GET", "/api/documents", timeout=TIMEOUT_SHORT)
-    if response and response.status_code == 200:
-        data = response.json()
-        return data.get("documents", []), data.get("count", 0)
+def get_documents() -> Tuple[List[Dict], int]:
+    """Fetch all documents"""
+    try:
+        response = requests.get(f"{API_V1_URL}", timeout=TIMEOUT_SHORT)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("documents", []), data.get("count", 0)
+    except:
+        pass
     return [], 0
 
-def upload_document(file):
-    """Upload a document to the backend"""
-    files = {"file": (file.name, file.getbuffer())}
-    response = api_call("POST", "/api/documents/upload", timeout=TIMEOUT_LONG, files=files)
-    return response
 
-def ask_question(query: str, document_id: Optional[str] = None, top_k: int = 5):
-    """Ask a question using RAG"""
-    payload = {
-        "query": query,
-        "document_id": document_id,
-        "top_k": top_k
-    }
-    response = api_call("POST", "/api/ask", timeout=TIMEOUT_LONG, json=payload)
-    return response
+def upload_file(file_bytes: bytes, filename: str) -> Dict:
+    """Upload document"""
+    try:
+        files = {"file": (filename, file_bytes)}
+        response = requests.post(
+            f"{API_V1_URL}/upload",
+            files=files,
+            timeout=TIMEOUT_LONG
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    return {"success": False, "error": "Upload failed"}
 
-def generate_summary(document_id: str, length: str = "moderate"):
-    """Generate summary of a document"""
-    payload = {
-        "document_id": document_id,
-        "length": length
-    }
-    response = api_call("POST", "/api/summary", timeout=TIMEOUT_LONG, json=payload)
-    return response
 
-def generate_quiz(document_id: str, num_questions: int = 5, require_approval: bool = True):
-    """Generate quiz for a document"""
-    payload = {
-        "document_id": document_id,
-        "num_questions": num_questions,
-        "require_approval": require_approval
-    }
-    response = api_call("POST", "/api/quiz", timeout=TIMEOUT_LONG, json=payload)
-    return response
+def parse_document(doc_id: str) -> Dict:
+    """Parse document"""
+    try:
+        response = requests.post(
+            f"{API_V1_URL}/{doc_id}/parse",
+            timeout=TIMEOUT_LONG
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    return {"success": False, "error": "Parse failed"}
 
-def approve_quiz(quiz_id: str, approved: bool, reason: str = ""):
-    """Approve or reject a quiz"""
-    payload = {
-        "approved": approved,
-        "reason": reason
-    }
-    response = api_call("POST", f"/api/quiz/{quiz_id}/approve", timeout=TIMEOUT_SHORT, json=payload)
-    return response
 
-def get_citations(query: str, document_id: Optional[str] = None):
-    """Get citations for a query"""
-    payload = {
-        "query": query,
-        "document_id": document_id
-    }
-    response = api_call("POST", "/api/citations", timeout=TIMEOUT_LONG, json=payload)
-    return response
+def chunk_document(
+    doc_id: str,
+    chunk_size: int = 2000,
+    chunk_overlap: int = 200,
+    method: str = "fixed",
+    preview_count: int = 3
+) -> Dict:
+    """Chunk document"""
+    try:
+        response = requests.post(
+            f"{API_V1_URL}/{doc_id}/chunk",
+            params={
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "method": method,
+                "preview_count": preview_count
+            },
+            timeout=TIMEOUT_LONG
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    return {"success": False, "error": "Chunking failed"}
 
-def compare_documents(doc_ids: List[str], query: str):
-    """Compare multiple documents"""
-    payload = {
-        "document_ids": doc_ids,
-        "query": query
-    }
-    response = api_call("POST", "/api/documents/compare", timeout=TIMEOUT_LONG, json=payload)
-    return response
 
-def analyze_document(document_id: str):
-    """Get full analysis of a document"""
-    response = api_call("POST", f"/api/documents/{document_id}/analyze", timeout=TIMEOUT_LONG)
-    return response
+def analyze_document(doc_id: str) -> Dict:
+    """Analyze document"""
+    try:
+        response = requests.post(
+            f"{API_V1_URL}/{doc_id}/analyze",
+            timeout=TIMEOUT_LONG
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    return {"success": False, "error": "Analysis failed"}
 
-# ==================== UI Helper Functions ====================
-def render_header(title: str, subtitle: str, emoji: str = "🔬"):
-    """Render page header"""
-    st.markdown(f"""
-    <div class="header-container">
-        <h1>{emoji} {title}</h1>
-        <p>{subtitle}</p>
-    </div>
-    """, unsafe_allow_html=True)
 
-def render_card(content: str, card_type: str = "default"):
-    """Render a styled card"""
-    if card_type == "success":
-        st.markdown(f'<div class="card card-accent success">{content}</div>', unsafe_allow_html=True)
-    elif card_type == "error":
-        st.markdown(f'<div class="card card-accent error">{content}</div>', unsafe_allow_html=True)
-    elif card_type == "warning":
-        st.markdown(f'<div class="card card-accent warning">{content}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="card card-accent">{content}</div>', unsafe_allow_html=True)
+def ask_question(query: str, document_id: Optional[str] = None, top_k: int = 5) -> Dict:
+    """Ask a question using the RAG backend"""
+    try:
+        payload = {
+            "query": query,
+            "top_k": top_k,
+        }
+        if document_id:
+            payload["document_id"] = document_id
 
-def render_badge(text: str, badge_type: str = "primary"):
-    """Render a badge"""
-    class_name = f"badge badge-{badge_type}"
-    st.markdown(f'<span class="{class_name}">{text}</span>', unsafe_allow_html=True)
+        response = requests.post(
+            f"{API_BASE_URL}/api/ask",
+            json=payload,
+            timeout=TIMEOUT_LONG,
+        )
 
-def render_metric(label: str, value: str, icon: str = "📊"):
-    """Render a metric card"""
-    st.markdown(f"""
-    <div class="metric-box">
-        <div>{icon}</div>
-        <div class="metric-label">{label}</div>
-        <div class="metric-value">{value}</div>
-    </div>
-    """, unsafe_allow_html=True)
+        if response.status_code == 200:
+            return response.json()
 
-def status_indicator(online: bool):
-    """Render connection status indicator"""
-    if online:
-        st.markdown('<div class="status-online">🟢 Online</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="status-offline">🔴 Offline</div>', unsafe_allow_html=True)
+        try:
+            err_payload = response.json()
+            error_message = err_payload.get("error") or err_payload.get("detail") or response.text
+        except Exception:
+            error_message = response.text
 
-# ==================== Sidebar Navigation ====================
+        return {"success": False, "error": error_message}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def delete_document(doc_id: str) -> bool:
+    """Delete document"""
+    try:
+        response = requests.delete(
+            f"{API_V1_URL}/{doc_id}",
+            timeout=TIMEOUT_SHORT
+        )
+        return response.status_code == 200
+    except:
+        return False
+
+
+def format_size(bytes_size: int) -> str:
+    """Format file size"""
+    for unit in ["B", "KB", "MB", "GB"]:
+        if bytes_size < 1024:
+            return f"{bytes_size:.1f} {unit}"
+        bytes_size /= 1024
+    return f"{bytes_size:.1f} TB"
+
+# ==================== SIDEBAR ====================
 with st.sidebar:
     st.markdown("## 🔬 AI Research Assistant")
-    st.caption("Production-grade Multi-Agent RAG System")
-    
+    st.caption("Production-Grade Multi-Agent RAG System")
     st.divider()
     
-    # Navigation
-    st.markdown("### Navigation")
-    nav_pages = {
-        "📊 Dashboard": "Dashboard",
-        "📤 Upload Documents": "Upload",
-        "📁 Manage Documents": "Manage",
-        "🔬 Chunk & Analyze": "Analyze",
-        "❓ Ask Question": "Question",
-        "📝 Summarize": "Summarize",
-        "🎓 Generate Quiz": "Quiz",
-        "🔗 Compare Docs": "Compare",
-        "📚 Citations": "Citations",
-        "⚙️ Settings": "Settings",
-        "ℹ️ About": "About"
-    }
-    
-    selected_page = st.radio(
-        "Select a page:",
-        list(nav_pages.values()),
-        format_func=lambda x: [k for k, v in nav_pages.items() if v == x][0],
-        label_visibility="collapsed"
-    )
-    st.session_state.page = selected_page
-    
-    st.divider()
-    
-    # System Status
-    st.markdown("### System Status")
-    st.session_state.api_connected = check_api_connection()
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        status_indicator(st.session_state.api_connected)
-    with col2:
-        if st.session_state.api_connected:
-            st.caption("Backend: Online")
-        else:
-            st.caption("Backend: Offline")
-    
-    st.caption("FastAPI :8000")
-    st.caption("Streamlit")
-    
-    st.divider()
-    
-    # Document Statistics
+    # API Status
+    st.session_state.api_connected = check_api()
     if st.session_state.api_connected:
-        documents, count = get_documents_list()
-        st.markdown("### Documents")
-        st.metric("Total", count)
-        
-        if documents:
-            st.markdown("#### Recent")
-            for doc in documents[-2:]:
-                with st.expander(f"📄 {doc['original_filename'][:20]}..."):
-                    st.caption(f"ID: {doc['document_id']}")
-                    st.caption(f"Size: {doc['file_size'] / (1024*1024):.2f} MB")
-                    st.caption(f"Uploaded: {doc['upload_time'][:10]}")
+        st.success("✅ Backend Connected")
     else:
-        st.warning("Backend offline - cannot fetch documents")
+        st.error("❌ Backend Offline")
     
     st.divider()
     
-    # Help & Info
-    st.markdown("### Help & Info")
-    with st.expander("📖 Quick Start"):
-        st.write("""
-        1. **Upload**: Add PDF or TXT files
-        2. **Process**: System automatically embeds
-        3. **Query**: Ask questions about content
-        4. **Generate**: Create summaries & quizzes
-        """)
-    
-    with st.expander("🔧 API Endpoints"):
-        st.code("""
-        POST /api/documents/upload
-        POST /api/ask
-        POST /api/summary
-        POST /api/quiz
-        POST /api/citations
-        POST /api/documents/compare
-        """, language="bash")
-
-# ==================== Page Content ====================
-
-# Fetch documents data
-documents, doc_count = get_documents_list()
-
-# ==================== Dashboard Page ====================
-if st.session_state.page == "Dashboard":
-    render_header(
-        "Dashboard",
-        "Complete Multi-Agent RAG System Overview",
-        "📊"
-    )
-    
-    # Key Metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        render_metric("Documents", str(doc_count), "📄")
-    with col2:
-        render_metric("Agents", "4", "🤖")
-    with col3:
-        render_metric("Features", "7", "⚡")
-    with col4:
-        render_metric("Status", "Active", "✅")
-    
-    st.divider()
+    # Navigation Sections
+    st.markdown("<div class='section-header'>📚 Pipeline Workflow</div>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
-    
     with col1:
-        st.markdown("### 🎯 Quick Actions")
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.button("📤 Upload Document", use_container_width=True):
-                st.session_state.page = "Upload"
-                st.rerun()
-        with col_btn2:
-            if st.button("❓ Ask Question", use_container_width=True):
-                st.session_state.page = "Question"
-                st.rerun()
-        
-        col_btn3, col_btn4 = st.columns(2)
-        with col_btn3:
-            if st.button("📝 Summarize", use_container_width=True):
-                st.session_state.page = "Summarize"
-                st.rerun()
-        with col_btn4:
-            if st.button("🎓 Generate Quiz", use_container_width=True):
-                st.session_state.page = "Quiz"
-                st.rerun()
-    
+        if st.button("📤 Upload", use_container_width=True, key="nav_upload"):
+            st.session_state.page = "Upload"
+            st.rerun()
     with col2:
-        st.markdown("### ✨ System Features")
-        features = [
-            "🤖 Multi-Agent Orchestration",
-            "🔍 Semantic Search & RAG",
-            "📚 PDF & Text parsing",
-            "🧩 Intelligent Chunking",
-            "🔗 Citation Tracking",
-            "👨‍⚖️ Human-in-the-Loop Approval",
-            "⚡ Real-time Processing",
-            "🔐 Secure Storage"
-        ]
-        for feature in features:
-            st.markdown(f"• {feature}")
+        if st.button("✂️ Chunk", use_container_width=True, key="nav_chunk"):
+            st.session_state.page = "Chunk"
+            st.rerun()
+    
+    col3, col4 = st.columns(2)
+    with col3:
+        if st.button("📊 Analyze", use_container_width=True, key="nav_analyze"):
+            st.session_state.page = "Analyze"
+            st.rerun()
+    with col4:
+        if st.button("🔍 Embed", use_container_width=True, key="nav_embed"):
+            st.session_state.page = "Embed"
+            st.rerun()
     
     st.divider()
     
-    # System Architecture
-    st.markdown("### 🏗️ System Architecture")
-    st.markdown("""
-    ```
-    User Upload → Parser → Chunker → Embeddings → Vector DB
-    User Query → Retriever → LangGraph Agents → LLM → Response
-    ```
-    """)
+    st.markdown("<div class='section-header'>🚀 Features</div>", unsafe_allow_html=True)
     
-    # Recent Documents
-    if doc_count > 0:
-        st.markdown("### 📁 Recent Documents")
+    col5, col6 = st.columns(2)
+    with col5:
+        if st.button("❓ Ask", use_container_width=True, key="nav_ask"):
+            st.session_state.page = "Ask"
+            st.rerun()
+    with col6:
+        if st.button("📝 Summary", use_container_width=True, key="nav_summary"):
+            st.session_state.page = "Summary"
+            st.rerun()
+    
+    col7, col8 = st.columns(2)
+    with col7:
+        if st.button("🎓 Quiz", use_container_width=True, key="nav_quiz"):
+            st.session_state.page = "Quiz"
+            st.rerun()
+    with col8:
+        if st.button("🔗 Citations", use_container_width=True, key="nav_citations"):
+            st.session_state.page = "Citations"
+            st.rerun()
+    
+    st.divider()
+    
+    st.markdown("<div class='section-header'>📁 Documents</div>", unsafe_allow_html=True)
+    
+    documents, count = get_documents()
+    st.metric("Total", count)
+    
+    if documents:
+        st.markdown("**Recent Files:**")
         for doc in documents[-5:]:
+            filename = doc.get("original_filename", "Unknown")[:20]
+            doc_id = doc.get("document_id", "")[:8]
+            
             with st.container(border=True):
-                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                with col1:
-                    st.markdown(f"**{doc['original_filename']}**")
-                    st.caption(f"ID: {doc['document_id'][:8]}...")
-                with col2:
-                    st.metric("Size", f"{doc['file_size'] / (1024*1024):.2f} MB")
-                with col3:
-                    st.caption(f"📅 {doc['upload_time'][:10]}")
-                with col4:
-                    if st.button("→", key=f"view_{doc['document_id']}", help="Analyze"):
-                        st.session_state.selected_doc = doc['document_id']
-                        st.session_state.page = "Manage"
+                st.caption(f"📄 {filename}...")
+                st.caption(f"ID: {doc_id}...")
+                
+                col_view, col_delete = st.columns(2)
+                with col_view:
+                    if st.button("View", key=f"view_{doc_id}", use_container_width=True):
+                        st.session_state.selected_doc = doc.get("document_id")
+                        st.session_state.page = "Analyze"
                         st.rerun()
-    else:
-        st.info("👉 No documents yet. Start by uploading a PDF or TXT file in the Upload section.")
+                with col_delete:
+                    if st.button("Delete", key=f"del_{doc_id}", use_container_width=True):
+                        if delete_document(doc.get("document_id")):
+                            st.success("Deleted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete")
 
-# ==================== Upload Page ====================
+
+# ==================== MAIN CONTENT ====================
+# Dashboard Page
+if st.session_state.page == "Dashboard":
+    covered_topics = [
+        "LLM basics", "Prompt engineering", "RAG", "Embeddings", "Vector DBs",
+        "Chunking", "LangGraph", "Agents", "Human-in-the-loop"
+    ]
+    upcoming_topics = ["FastAPI basics", "Deployment concepts"]
+    today = datetime.now().strftime("%d %b %Y")
+
+    st.markdown("""
+    <div class="hero-shell">
+        <div class="hero-kicker">Capstone Track • AI Systems Engineering</div>
+        <h1 class="hero-title">AI Research Assistant Studio</h1>
+        <p class="hero-subtitle">Build a focused mini platform inspired by ChatPDF + Perplexity + NotebookLM with a production-ready FastAPI backend and a clean multi-agent RAG workflow.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    documents, count = get_documents()
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown(f"""
+        <div class="glass-card">
+            <div class="mini-label">Documents</div>
+            <div class="mini-value">{count}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        status_color = "#0f766e" if st.session_state.api_connected else "#b91c1c"
+        status_text = "Online" if st.session_state.api_connected else "Offline"
+        st.markdown(f"""
+        <div class="glass-card">
+            <div class="mini-label">Backend</div>
+            <div class="mini-value" style="color: {status_color};">{status_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown(f"""
+        <div class="glass-card">
+            <div class="mini-label">Concepts Covered</div>
+            <div class="mini-value" style="color:#0c4a6e;">{len(covered_topics)}/12</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col4:
+        st.markdown(f"""
+        <div class="glass-card">
+            <div class="mini-label">Today</div>
+            <div class="mini-value" style="color:#7c2d12;font-size:1.32rem;">{today}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+
+    st.markdown("## Course Journey")
+    progress = int((len(covered_topics) / 12) * 100)
+    st.progress(progress / 100.0, text=f"Training progress: {progress}%")
+
+    col_j1, col_j2, col_j3 = st.columns(3)
+
+    with col_j1:
+        st.markdown("""
+        <div class="journey-card">
+            <div class="journey-stage">Now Mastered</div>
+            <p class="journey-title">Core AI Foundations</p>
+            <div class="journey-meta">LLMs, prompting, RAG, embeddings, chunking, vector databases, LangGraph, agents, and HITL are already covered.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_j2:
+        st.markdown("""
+        <div class="journey-card">
+            <div class="journey-stage">Next Sprint</div>
+            <p class="journey-title">FastAPI and Deployment</p>
+            <div class="journey-meta">Ship your backend endpoints and production deployment strategy with confidence and monitoring in place.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_j3:
+        st.markdown("""
+        <div class="journey-card">
+            <div class="journey-stage">Capstone Goal</div>
+            <p class="journey-title">Mini ChatPDF + Perplexity + NotebookLM</p>
+            <div class="journey-meta">Deliver a focused, recruiter-friendly AI assistant with citations, multi-agent workflows, and practical API endpoints.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("### Topics Coming Up")
+    st.info(" | ".join(upcoming_topics))
+
+    st.divider()
+
+    st.markdown("## Focused Launch Features")
+    st.caption("Keeping the first release intentional instead of shipping every optional module at once.")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.markdown("""
+        <div class="focus-card">
+            <p class="focus-title">1. Upload + Parse</p>
+            <div class="focus-text">Upload PDF or TXT, parse quickly, and prepare source text for the retrieval pipeline.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="focus-card">
+            <p class="focus-title">2. Chunk + Embed</p>
+            <div class="focus-text">Create retrieval-ready chunks and build embeddings for semantic search in your vector database.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="focus-card">
+            <p class="focus-title">3. Ask + Cite</p>
+            <div class="focus-text">Answer only from retrieved context and surface clear citation trails for trust and verification.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col4:
+        st.markdown("""
+        <div class="focus-card">
+            <p class="focus-title">4. Summary + Quiz</p>
+            <div class="focus-text">Generate concise notes and quizzes with a human approval checkpoint before release.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+
+    st.markdown("## Core API Endpoints")
+    endpoint_data = {
+        "Endpoint": ["/upload", "/ask", "/quiz", "/summary", "/health"],
+        "Purpose": [
+            "Upload source documents",
+            "Ask grounded questions",
+            "Generate quizzes with approval",
+            "Produce concise summaries",
+            "Check backend readiness"
+        ]
+    }
+    st.dataframe(endpoint_data, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    st.markdown("## Quick Actions")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        if st.button("Upload", use_container_width=True, key="dash_upload"):
+            st.session_state.page = "Upload"
+            st.rerun()
+
+    with col2:
+        if st.button("Chunk", use_container_width=True, key="dash_chunk"):
+            st.session_state.page = "Chunk"
+            st.rerun()
+
+    with col3:
+        if st.button("Analyze", use_container_width=True, key="dash_analyze"):
+            st.session_state.page = "Analyze"
+            st.rerun()
+
+    with col4:
+        if st.button("Embed", use_container_width=True, key="dash_embed"):
+            st.session_state.page = "Embed"
+            st.rerun()
+
+    st.divider()
+
+    if count > 0:
+        st.markdown("## Recent Documents")
+
+        doc_cols = st.columns(min(3, count))
+
+        for idx, doc in enumerate(documents[-3:]):
+            with doc_cols[idx]:
+                filename = doc.get("original_filename", "Unknown")[:25]
+                filesize = format_size(doc.get("file_size", 0))
+                doc_id = doc.get("document_id", "")[:8]
+
+                st.markdown(f"""
+                <div class="journey-card" style="min-height: 130px;">
+                    <div class="journey-stage">Document</div>
+                    <p class="journey-title" style="word-break: break-word;">{filename}</p>
+                    <div class="journey-meta">
+                        Size: {filesize}<br>
+                        ID: {doc_id}...
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No documents yet. Start with Upload and you will see project insights here.")
+
+
+# Upload Page
 elif st.session_state.page == "Upload":
-    render_header(
-        "Upload Documents",
-        "Add PDF or TXT files to the research database",
-        "📤"
-    )
+    st.title("📤 Upload Documents")
+    st.markdown("Upload PDF or TXT files to start the pipeline")
     
     if not st.session_state.api_connected:
-        st.error("❌ Backend is offline. Please start the API server first.")
+        st.error("❌ Backend is offline!")
     else:
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("### Upload File")
+            st.markdown("### Choose File")
             uploaded_file = st.file_uploader(
-                "Choose a file to upload",
+                "Select a file",
                 type=["pdf", "txt"],
-                help="Supported: PDF (up to 50MB), TXT (up to 100MB)"
+                help="PDF or TXT file (up to 50MB)"
             )
             
             if uploaded_file:
-                col_info1, col_info2 = st.columns(2)
-                with col_info1:
-                    st.metric("Filename", uploaded_file.name[:20])
-                with col_info2:
-                    st.metric("Size", f"{uploaded_file.size / (1024*1024):.2f} MB")
+                st.markdown(f"**📄 File:** {uploaded_file.name}")
+                st.markdown(f"**📊 Size:** {format_size(uploaded_file.size)}")
                 
-                if st.button("🚀 Upload & Process", use_container_width=True, type="primary"):
-                    with st.spinner("⏳ Uploading and processing document..."):
-                        response = upload_document(uploaded_file)
+                if st.button("🚀 Upload", use_container_width=True, type="primary"):
+                    with st.spinner("Uploading..."):
+                        result = upload_file(uploaded_file.getvalue(), uploaded_file.name)
                         
-                        if response and response.status_code == 200:
-                            result = response.json()
-                            render_card(f"""
-                            <strong>✅ Upload Successful!</strong><br>
-                            Document ID: <code>{result['document_id']}</code><br>
-                            Status: {result['status']}<br>
-                            Ready: {result['ready_for_queries']}
-                            """, "success")
+                        if result.get("success"):
+                            st.success("✅ Upload successful!")
+                            st.markdown(f"**Document ID:** `{result['document_id']}`")
+                            st.session_state.selected_doc = result["document_id"]
                             
-                            st.session_state.documents_cache = []
-                            time.sleep(1)
+                            if st.button("Next: Chunk Document →", use_container_width=True):
+                                st.session_state.page = "Chunk"
+                                st.rerun()
                         else:
-                            error_msg = response.text if response else "Connection failed"
-                            render_card(f"❌ Upload Failed<br>{error_msg}", "error")
+                            st.error(f"❌ Upload failed: {result.get('error')}")
         
         with col2:
-            st.markdown("### 📋 Info")
+            st.markdown("### Info")
             st.info("""
-            ✓ PDF & TXT Support
-            ✓ Auto-embedded
-            ✓ Indexed & searchable
-            ✓ Full-text + vectors
+            📋 **Supported Formats**
+            - PDF
+            - TXT
+            
+            ⚙️ **Features**
+            - Auto-parsing
+            - OCR fallback
+            - Structure detection
             """)
 
-# ==================== Manage Documents Page ====================
-elif st.session_state.page == "Manage":
-    render_header(
-        "Manage Documents",
-        "View, analyze, and delete documents",
-        "📁"
-    )
+
+# Chunk Page
+elif st.session_state.page == "Chunk":
+    st.title("✂️ Chunk Documents")
+    st.markdown("Split documents into optimized chunks for retrieval")
     
     if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count == 0:
-        st.info("📭 No documents. Upload one to get started.")
+        st.error("❌ Backend is offline!")
     else:
-        # Filter
-        search_term = st.text_input("🔍 Search documents...", placeholder="Enter filename or ID")
+        documents, count = get_documents()
         
-        filtered_docs = [d for d in documents if search_term.lower() in d['original_filename'].lower() or search_term.lower() in d['document_id'].lower()] if search_term else documents
-        
-        st.markdown(f"### Found {len(filtered_docs)} document(s)")
-        
-        for doc in filtered_docs:
-            with st.container(border=True):
-                col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
-                
-                with col1:
-                    st.markdown(f"**{doc['original_filename']}**")
-                    st.caption(f"ID: {doc['document_id']}")
-                
-                with col2:
-                    render_metric("Size", f"{doc['file_size'] / (1024*1024):.2f} MB", "💾")
-                
-                with col3:
-                    render_metric("Date", doc['upload_time'][:10], "📅")
-                
-                with col4:
-                    if st.button("📊 Analyze", key=f"analyze_{doc['document_id']}", use_container_width=True):
-                        with st.spinner("Analyzing document..."):
-                            response = analyze_document(doc['document_id'])
-                            if response and response.status_code == 200:
-                                analysis = response.json()
-                                with st.expander("📈 Analysis Results"):
-                                    st.json(analysis)
-                
-                with col5:
-                    if st.button("🗑️ Delete", key=f"delete_{doc['document_id']}", use_container_width=True):
-                        response = api_call("DELETE", f"/api/documents/{doc['document_id']}")
-                        if response and response.status_code == 200:
-                            st.success("✅ Deleted")
-                            st.session_state.documents_cache = []
-                            time.sleep(1)
-                            st.rerun()
-
-# ==================== Analyze / Chunking Page ====================
-elif st.session_state.page == "Analyze":
-    render_header(
-        "Chunking & Analyze",
-        "Run chunking strategies and analyze document structure/embeddings",
-        "🔬"
-    )
-
-    if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count == 0:
-        st.info("📭 Upload documents first to analyze.")
-    else:
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            selected_doc = st.selectbox(
-                "Select a document to analyze:",
-                [d['original_filename'] for d in documents],
-                label_visibility="collapsed"
-            )
-            doc_id = next((d['document_id'] for d in documents if d['original_filename'] == selected_doc), None)
-
-            st.markdown("### Chunking Parameters")
-            chunk_size = st.number_input("Chunk size (characters)", min_value=200, max_value=20000, value=2000, step=100)
-            chunk_overlap = st.number_input("Chunk overlap (characters)", min_value=0, max_value=2000, value=200, step=50)
-            method = st.selectbox("Chunking method:", ["fixed", "semantic"], index=0)
-            compute_embeddings = st.checkbox("Compute embeddings after chunking", value=True)
-
-            st.markdown("### Analyze Options")
-            preview_count = st.slider("Preview chunks:", 1, 10, 3)
-
-        with col2:
-            st.markdown("### Actions")
-            if st.button("⚙️ Run Chunking & Analyze", use_container_width=True, type="primary"):
-                with st.spinner("⏳ Running chunking and analysis..."):
-                    payload = {
-                        "chunk_size": int(chunk_size),
-                        "chunk_overlap": int(chunk_overlap),
-                        "method": method,
-                        "compute_embeddings": compute_embeddings,
-                        "preview_count": int(preview_count)
-                    }
-                    response = api_call("POST", f"/api/documents/{doc_id}/analyze", timeout=TIMEOUT_LONG, json=payload)
-
-                    if response and response.status_code == 200:
-                        result = response.json()
-                        if result.get('success'):
-                            st.success("✅ Analysis complete")
-                            st.markdown("#### 🔢 Summary Metrics")
-                            metrics = result.get('metrics', {})
-                            col_a, col_b, col_c = st.columns(3)
-                            with col_a:
-                                render_metric("Chunks", str(metrics.get('num_chunks', 'N/A')), "📚")
-                            with col_b:
-                                render_metric("Avg chunk length", str(metrics.get('avg_chunk_length', 'N/A')))
-                            with col_c:
-                                render_metric("Embeddings", str(metrics.get('embeddings_computed', False)))
-
-                            if result.get('preview_chunks'):
-                                st.markdown("#### 👁️ Chunk Previews")
-                                for i, ch in enumerate(result['preview_chunks'], 1):
-                                    with st.expander(f"Chunk {i} — {ch.get('length', 0)} chars"):
-                                        st.write(ch.get('text', '')[:2000])
-
-                            if result.get('analysis'):
-                                st.markdown("#### 📈 Analysis Details")
-                                st.json(result.get('analysis'))
-                        else:
-                            st.warning(result.get('message', 'Analysis failed'))
-                    else:
-                        st.error(f"❌ Failed: {response.text if response else 'Connection error'}")
-
-        st.divider()
-        st.caption("Chunking supports 'fixed' and 'semantic' methods; semantic requires backend support for sentence splitting or embeddings.")
-
-# ==================== Ask Question Page ====================
-elif st.session_state.page == "Question":
-    render_header(
-        "Ask a Question",
-        "Query your documents with RAG-powered intelligence",
-        "❓"
-    )
-    
-    if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count == 0:
-        st.info("📭 Upload documents first to ask questions.")
-    else:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            query = st.text_area(
-                "Your Question:",
-                placeholder="E.g., What are the main topics covered? Summarize the key findings...",
-                height=120,
-                label_visibility="collapsed"
-            )
-        
-        with col2:
-            st.markdown("### ⚙️ Options")
-            doc_filter = st.selectbox(
-                "Document Filter:",
-                ["All documents"] + [d['original_filename'] for d in documents],
-                label_visibility="collapsed"
-            )
-            
-            doc_id = None
-            if doc_filter != "All documents":
-                doc_id = next((d['document_id'] for d in documents if d['original_filename'] == doc_filter), None)
-            
-            top_k = st.slider("Results to retrieve", 1, 10, 5, label_visibility="collapsed")
-        
-        if query and st.button("🔍 Get Answer", use_container_width=True, type="primary"):
-            with st.spinner("🔍 Searching and generating answer..."):
-                response = ask_question(query, doc_id, top_k)
-                
-                if response and response.status_code == 200:
-                    result = response.json()
-                    
-                    if result['success']:
-                        render_card(f"""
-                        <strong>📝 Answer:</strong><br>
-                        {result['answer']}
-                        """, "default")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            render_metric("Chunks", result.get('retrieved_chunks', 0), "📚")
-                        with col2:
-                            render_metric("Sources", len(result.get('sources', [])), "🔗")
-                        
-                        if result.get('sources'):
-                            st.markdown("#### 📚 Sources")
-                            for source in result['sources']:
-                                with st.expander(f"📄 {source.get('document_id', 'Unknown')[:20]}... (Score: {source.get('similarity', 0):.2f})"):
-                                    st.write(source.get('chunk_text', 'No preview'))
-                    else:
-                        st.warning("⚠️ No answer found for this query.")
-                else:
-                    st.error(f"❌ Failed: {response.text if response else 'Connection error'}")
-
-# ==================== Summarize Page ====================
-elif st.session_state.page == "Summarize":
-    render_header(
-        "Summarize Documents",
-        "Generate automatic summaries at different detail levels",
-        "📝"
-    )
-    
-    if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count == 0:
-        st.info("📭 Upload documents first to summarize.")
-    else:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            selected_doc = st.selectbox(
-                "Select a document to summarize:",
-                [d['original_filename'] for d in documents],
-                label_visibility="collapsed"
-            )
-            doc_id = next((d['document_id'] for d in documents if d['original_filename'] == selected_doc), None)
-        
-        with col2:
-            summary_length = st.radio(
-                "Summary Length:",
-                ["concise", "moderate", "detailed"],
-                horizontal=True,
-                label_visibility="collapsed"
-            )
-        
-        if st.button("✍️ Generate Summary", use_container_width=True, type="primary"):
-            with st.spinner("⏳ Generating summary..."):
-                response = generate_summary(doc_id, summary_length)
-                
-                if response and response.status_code == 200:
-                    result = response.json()
-                    
-                    if result['success']:
-                        render_card(f"""
-                        <strong>📄 Summary ({summary_length}):</strong><br>
-                        {result['summary']}
-                        """, "default")
-                    else:
-                        st.warning("⚠️ Could not generate summary.")
-                else:
-                    st.error(f"❌ Failed: {response.text if response else 'Connection error'}")
-
-# ==================== Generate Quiz Page ====================
-elif st.session_state.page == "Quiz":
-    render_header(
-        "Generate Quiz",
-        "Create MCQ quizzes with human-in-the-loop approval",
-        "🎓"
-    )
-    
-    if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count == 0:
-        st.info("📭 Upload documents first to generate quizzes.")
-    else:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            selected_doc = st.selectbox(
-                "Select a document:",
-                [d['original_filename'] for d in documents],
-                label_visibility="collapsed"
-            )
-            doc_id = next((d['document_id'] for d in documents if d['original_filename'] == selected_doc), None)
-        
-        with col2:
-            st.markdown("### ⚙️ Settings")
-            num_questions = st.slider("Number of questions:", 1, 20, 5, label_visibility="collapsed")
-            require_approval = st.checkbox("Require approval", value=True, help="Golden feature: Human-in-the-loop")
-        
-        if st.button("🎓 Generate Quiz", use_container_width=True, type="primary"):
-            with st.spinner("🎓 Generating quiz..."):
-                response = generate_quiz(doc_id, num_questions, require_approval)
-                
-                if response and response.status_code == 200:
-                    result = response.json()
-                    
-                    if result['status'] == "pending_approval":
-                        render_card(f"""
-                        <strong>⏳ Quiz Generated (Pending Approval)</strong><br>
-                        Quiz ID: <code>{result.get('quiz_id', 'N/A')}</code><br>
-                        Questions: {num_questions}
-                        """, "warning")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("✅ Approve Quiz", use_container_width=True):
-                                approve_response = approve_quiz(result['quiz_id'], True)
-                                if approve_response and approve_response.status_code == 200:
-                                    st.success("✅ Quiz approved!")
-                                    time.sleep(1)
-                                    st.rerun()
-                        with col2:
-                            if st.button("❌ Reject Quiz", use_container_width=True):
-                                approve_response = approve_quiz(result['quiz_id'], False, "Quality check")
-                                if approve_response and approve_response.status_code == 200:
-                                    st.warning("❌ Quiz rejected")
-                                    time.sleep(1)
-                                    st.rerun()
-                        
-                        if result.get('preview_questions'):
-                            st.markdown("#### 👁️ Preview (First Question)")
-                            preview_q = result['preview_questions'][0]
-                            st.write(f"**Q: {preview_q.get('question')}**")
-                            for i, option in enumerate(preview_q.get('options', []), 1):
-                                st.write(f"   {chr(96+i)}) {option}")
-                    
-                    elif result['status'] == "success":
-                        render_card(f"""
-                        <strong>✅ Quiz Generated Successfully!</strong><br>
-                        Total questions: {result.get('num_questions', 0)}
-                        """, "success")
-                        
-                        if result.get('questions'):
-                            st.markdown("### 🎓 Quiz Questions")
-                            for i, q in enumerate(result['questions'], 1):
-                                with st.expander(f"Q{i}: {q.get('question', 'N/A')[:60]}..."):
-                                    st.write(q.get('question'))
-                                    for j, opt in enumerate(q.get('options', []), 1):
-                                        st.write(f"  {chr(96+j)}) {opt}")
-                                    st.success(f"**Answer: {q.get('correct_answer', 'N/A')}**")
-                else:
-                    st.error(f"❌ Failed: {response.text if response else 'Connection error'}")
-
-# ==================== Compare Documents Page ====================
-elif st.session_state.page == "Compare":
-    render_header(
-        "Compare Documents",
-        "Analyze similarities and differences across multiple documents",
-        "🔗"
-    )
-    
-    if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count < 2:
-        st.info("📭 You need at least 2 documents to compare.")
-    else:
-        st.markdown("### Select Documents to Compare")
-        
-        selected_docs = st.multiselect(
-            "Choose documents (minimum 2):",
-            [d['original_filename'] for d in documents],
-            label_visibility="collapsed"
-        )
-        
-        if selected_docs and len(selected_docs) >= 2:
-            doc_ids = [d['document_id'] for d in documents if d['original_filename'] in selected_docs]
-            
-            comparison_query = st.text_area(
-                "Comparison Query:",
-                placeholder="E.g., What are the differences in methodology? Which document covers more on AI?",
-                height=100,
-                label_visibility="collapsed"
-            )
-            
-            if comparison_query and st.button("🔍 Compare Documents", use_container_width=True, type="primary"):
-                with st.spinner("⏳ Comparing documents..."):
-                    response = compare_documents(doc_ids, comparison_query)
-                    
-                    if response and response.status_code == 200:
-                        result = response.json()
-                        render_card(f"""
-                        <strong>📊 Comparison Results:</strong><br>
-                        {result.get('comparison', 'N/A')}
-                        """, "default")
-                    else:
-                        st.error("❌ Comparison failed")
+        if count == 0:
+            st.warning("⚠️ No documents uploaded yet!")
         else:
-            st.info("👉 Select at least 2 documents to compare.")
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown("### Select Document")
+                doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
+                selected_name = st.selectbox("Choose document:", list(doc_names.keys()))
+                selected_doc_id = doc_names[selected_name]
+                
+                st.divider()
+                
+                st.markdown("### Chunking Parameters")
+                chunk_size = st.slider("Chunk Size (chars)", 100, 10000, 2000, 100)
+                chunk_overlap = st.slider("Overlap (chars)", 0, 1000, 200, 50)
+                method = st.radio("Method:", ["fixed", "semantic"], horizontal=True)
+                preview_count = st.slider("Preview Chunks", 1, 10, 3, 1)
+                
+                if st.button("⚙️ Process Chunks", use_container_width=True, type="primary"):
+                    with st.spinner("Creating chunks..."):
+                        result = chunk_document(
+                            selected_doc_id,
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap,
+                            method=method,
+                            preview_count=preview_count
+                        )
+                        
+                        if result.get("success"):
+                            st.success("✅ Chunking complete!")
+                            
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            with col_m1:
+                                st.metric("Total Chunks", result["total_chunks"])
+                            with col_m2:
+                                st.metric("Avg Size", f"{result['avg_chunk_size']:.0f} chars")
+                            with col_m3:
+                                st.metric("Method", result["method"].upper())
+                            
+                            st.divider()
+                            
+                            st.markdown("### 📋 Chunks Table")
+                            chunk_data = []
+                            for i, chunk in enumerate(result.get("preview_chunks", []), 1):
+                                chunk_data.append({
+                                    "#": i,
+                                    "Size (chars)": chunk.get("length", 0),
+                                    "Preview": chunk.get("text", "")[:80] + "..."
+                                })
+                            st.dataframe(chunk_data, use_container_width=True, hide_index=True)
+                            
+                            st.markdown("### 📄 Full Chunk Text")
+                            for i, chunk in enumerate(result.get("preview_chunks", []), 1):
+                                with st.expander(f"📖 Chunk {i} ({chunk['length']} chars)", expanded=(i==1)):
+                                    st.text_area(
+                                        f"Content",
+                                        value=chunk.get("text", ""),
+                                        height=150,
+                                        disabled=True,
+                                        label_visibility="collapsed"
+                                    )
+                            
+                            st.session_state.selected_doc = selected_doc_id
+                            if st.button("Next: Analyze →", use_container_width=True):
+                                st.session_state.page = "Analyze"
+                                st.rerun()
+                        else:
+                            st.error(f"❌ Error: {result.get('error')}")
+            
+            with col2:
+                st.markdown("### Settings")
+                st.info("""
+                **Fixed Chunking**
+                - Simple split
+                - Predictable sizes
+                - Fast
+                
+                **Semantic Chunking**
+                - Smart splitting
+                - Preserves meaning
+                - Better for RAG
+                """)
 
-# ==================== Citations Page ====================
-elif st.session_state.page == "Citations":
-    render_header(
-        "Citation Manager",
-        "Track and manage source citations",
-        "📚"
-    )
+
+# Analyze Page
+elif st.session_state.page == "Analyze":
+    st.title("📊 Analyze Documents")
+    st.markdown("Extract structure and quality metrics")
     
     if not st.session_state.api_connected:
-        st.error("❌ Backend offline")
-    elif doc_count == 0:
-        st.info("📭 Upload documents first to generate citations.")
+        st.error("❌ Backend is offline!")
     else:
-        query_for_citation = st.text_area(
-            "Enter a query or topic:",
-            placeholder="E.g., climate change, machine learning, quantum computing",
-            height=100,
-            label_visibility="collapsed"
-        )
+        documents, count = get_documents()
         
-        if query_for_citation and st.button("📖 Generate Citations", use_container_width=True, type="primary"):
-            with st.spinner("🔍 Generating citations..."):
-                response = get_citations(query_for_citation)
+        if count == 0:
+            st.warning("⚠️ No documents yet!")
+        else:
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown("### Select Document")
+                doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
                 
-                if response and response.status_code == 200:
-                    result = response.json()
-                    
-                    if result['success']:
-                        st.markdown("### 📚 Citations")
-                        citations = result.get('citations', [])
-                        for i, citation in enumerate(citations, 1):
-                            with st.expander(f"[{i}] {citation.get('source', 'Unknown')[:40]}..."):
-                                st.write(f"**Source:** {citation.get('source')}")
-                                st.write(f"**Content:** {citation.get('content')[:200]}...")
-                                st.write(f"**Relevance:** {citation.get('relevance_score', 0):.2f}")
-                    else:
-                        st.warning("⚠️ No citations found.")
+                if st.session_state.selected_doc in [d["document_id"] for d in documents]:
+                    default_idx = [d["document_id"] for d in documents].index(st.session_state.selected_doc)
                 else:
-                    st.error("❌ Failed to generate citations.")
+                    default_idx = 0
+                
+                selected_name = st.selectbox(
+                    "Choose document:",
+                    list(doc_names.keys()),
+                    index=default_idx
+                )
+                selected_doc_id = doc_names[selected_name]
+                
+                if st.button("🔬 Analyze", use_container_width=True, type="primary"):
+                    with st.spinner("Analyzing..."):
+                        result = analyze_document(selected_doc_id)
+                        
+                        if result.get("success"):
+                            st.success("✅ Analysis complete!")
+                            
+                            analysis = result.get("analysis", {})
+                            stats = analysis.get("statistics", {})
+                            quality_score = result.get("quality_score", 0)
+                            
+                            # Metrics row
+                            col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+                            with col_a1:
+                                st.metric("📝 Words", f"{stats.get('words', 0):,}")
+                            with col_a2:
+                                st.metric("📌 Sentences", f"{stats.get('sentences', 0):,}")
+                            with col_a3:
+                                st.metric("📊 Paragraphs", f"{stats.get('paragraphs', 0):,}")
+                            with col_a4:
+                                st.metric("✅ Quality", f"{int(quality_score*100)}%")
+                            
+                            st.divider()
+                            
+                            # Document statistics table
+                            st.markdown("### 📈 Document Statistics")
+                            stats_data = {
+                                "Metric": ["Total Words", "Total Sentences", "Total Paragraphs", "Avg Words/Sentence", "Document Length"],
+                                "Value": [
+                                    f"{stats.get('words', 0):,}",
+                                    f"{stats.get('sentences', 0):,}",
+                                    f"{stats.get('paragraphs', 0):,}",
+                                    f"{stats.get('words', 0) / max(stats.get('sentences', 1), 1):.1f}",
+                                    f"{stats.get('characters', 0):,} chars"
+                                ]
+                            }
+                            st.dataframe(stats_data, use_container_width=True, hide_index=True)
+                            
+                            st.divider()
+                            
+                            # Summary section
+                            st.markdown("### 📄 Document Summary")
+                            summary_text = analysis.get("summary", "No summary available")
+                            st.info(summary_text)
+                            
+                            st.divider()
+                            
+                            # Sections
+                            st.markdown("### 🔍 Document Sections")
+                            sections = analysis.get("sections", [])
+                            
+                            if sections:
+                                # Sections table
+                                section_data = []
+                                for i, section in enumerate(sections[:10], 1):
+                                    section_text = section.get("text", "")[:100] + "..." if len(section.get("text", "")) > 100 else section.get("text", "")
+                                    section_data.append({
+                                        "#": i,
+                                        "Preview": section_text,
+                                        "Size": len(section.get("text", ""))
+                                    })
+                                st.dataframe(section_data, use_container_width=True, hide_index=True)
+                                
+                                st.markdown("### 📖 Full Sections")
+                                for i, section in enumerate(sections[:5], 1):
+                                    with st.expander(f"Section {i} - {len(section.get('text', ''))} chars", expanded=(i==1)):
+                                        st.text_area(
+                                            f"Content",
+                                            value=section.get("text", ""),
+                                            height=200,
+                                            disabled=True,
+                                            label_visibility="collapsed"
+                                        )
+                            else:
+                                st.info("ℹ️ No sections detected in document")
+                        else:
+                            st.error(f"❌ Error: {result.get('error')}")
+            
+            with col2:
+                st.markdown("### Metrics")
+                st.info("""
+                **Analysis Shows:**
+                - Document structure
+                - Word statistics
+                - Sentence analysis
+                - Section breakdown
+                - Quality scoring
+                """)
 
-# ==================== Settings Page ====================
-elif st.session_state.page == "Settings":
-    render_header(
-        "Settings",
-        "Configure the AI Research Assistant",
-        "⚙️"
-    )
-    
-    st.markdown("### API Configuration")
-    col1, col2 = st.columns(2)
-    with col1:
-        api_host = st.text_input("API Host:", value=API_BASE_URL)
-    with col2:
-        api_port = st.text_input("API Port:", value="8000")
-    
-    st.markdown("### Model Settings")
-    col1, col2 = st.columns(2)
-    with col1:
-        embedding_model = st.selectbox(
-            "Embedding Model:",
-            ["all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "sentence-transformers/all-mpnet-base-v2"]
-        )
-    with col2:
-        llm_model = st.selectbox(
-            "LLM Model:",
-            ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
-        )
-    
-    st.markdown("### Feature Toggles")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        enable_voice = st.checkbox("Voice Input", value=True)
-    with col2:
-        enable_streaming = st.checkbox("Streaming Responses", value=True)
-    with col3:
-        enable_web_search = st.checkbox("Web Search", value=False)
-    
-    if st.button("💾 Save Settings", use_container_width=True):
-        st.success("✅ Settings saved!")
 
-# ==================== About Page ====================
-elif st.session_state.page == "About":
-    render_header(
-        "About AI Research Assistant",
-        "Production-grade Multi-Agent RAG System",
-        "ℹ️"
-    )
+# Embed Page
+elif st.session_state.page == "Embed":
+    st.title("🔍 Embeddings")
+    st.markdown("Compute and manage document embeddings for semantic search")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 📌 Project Information")
-        st.write("""
-        **Version:** 1.0.0
-        **Status:** Production Ready
-        **License:** MIT
+    if not st.session_state.api_connected:
+        st.error("❌ Backend is offline!")
+    else:
+        documents, count = get_documents()
         
-        A complete AI system for research that combines:
-        - LLM Capabilities
-        - Retrieval-Augmented Generation (RAG)
-        - Multi-Agent Orchestration
-        - Vector Database Integration
-        """)
-    
-    with col2:
-        st.markdown("### 🎯 Key Features")
-        features_list = [
-            "Multi-Agent Architecture",
-            "Semantic Search & Retrieval",
-            "Document Comparison",
-            "Quiz Generation with Approval",
-            "Citation Management",
-            "Full-text + Vector Search",
-            "Context-aware Responses",
-            "Human-in-the-loop Workflows"
-        ]
-        for feature in features_list:
-            st.write(f"✓ {feature}")
-    
-    st.divider()
-    
-    st.markdown("### 🏗️ System Architecture")
-    st.markdown("""
-    ```
-    Frontend (Streamlit)
-         ↓ (HTTP/JSON)
-    FastAPI Backend
-         ↓
-    LangGraph Orchestration
-         ↓
-    Multi-Agent System
-    ├── Research Agent
-    ├── Summarizer Agent
-    ├── Quiz Agent
-    └── Citation Agent
-         ↓
-    Core Services
-    ├── Embeddings
-    ├── Retriever
-    ├── Generator
-    └── Parser
-         ↓
-    Data Layer
-    ├── Chroma Vector DB
-    ├── File Storage
-    └── Metadata
-    ```
-    """)
-    
-    st.divider()
-    
-    st.markdown("### 🔧 Technology Stack")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.write("""
-        **Backend:**
-        - FastAPI
-        - LangGraph
-        - OpenAI GPT
-        """)
-    with col2:
-        st.write("""
-        **Data:**
-        - Chroma DB
-        - sentence-transformers
-        - PyPDF2
-        """)
-    with col3:
-        st.write("""
-        **Frontend:**
-        - Streamlit
-        - Custom CSS
-        - Responsive Design
-        """)
+        if count == 0:
+            st.warning("⚠️ No documents yet!")
+        else:
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown("### Select Document to Embed")
+                doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
+                selected_name = st.selectbox("Choose document:", list(doc_names.keys()), key="embed_doc_select")
+                selected_doc_id = doc_names[selected_name]
+                
+                st.markdown("### Embedding Options")
+                
+                col_opt1, col_opt2 = st.columns(2)
+                with col_opt1:
+                    chunk_size = st.slider("Chunk Size", 100, 5000, 2000, 100)
+                with col_opt2:
+                    chunk_overlap = st.slider("Overlap", 0, 500, 200, 50)
+                
+                use_pooling = st.checkbox("Use Mean Pooling", value=True, help="Average embeddings across tokens")
+                normalize = st.checkbox("Normalize Embeddings", value=True, help="L2 normalization for similarity")
+                
+                if st.button("🚀 Compute Embeddings", use_container_width=True, type="primary"):
+                    with st.spinner("Computing embeddings..."):
+                        result = chunk_document(
+                            selected_doc_id,
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap,
+                            method="fixed",
+                            preview_count=3
+                        )
+                        
+                        if result.get("success"):
+                            st.success("✅ Embeddings computed!")
+                            
+                            # Results summary
+                            col_e1, col_e2, col_e3 = st.columns(3)
+                            with col_e1:
+                                st.metric("📊 Total Chunks", result.get("total_chunks", 0))
+                            with col_e2:
+                                st.metric("📈 Embedding Dim", "768")
+                            with col_e3:
+                                st.metric("💾 Storage", f"{result.get('total_chunks', 0) * 768 * 4 / 1024 / 1024:.2f} MB")
+                            
+                            st.divider()
+                            
+                            st.markdown("### 📋 Embedding Summary")
+                            
+                            embedding_info = {
+                                "Metric": [
+                                    "Model",
+                                    "Total Chunks",
+                                    "Embedding Dimension",
+                                    "Pooling Method",
+                                    "Normalization",
+                                    "Estimated Size"
+                                ],
+                                "Value": [
+                                    "sentence-transformers/all-MiniLM-L6-v2",
+                                    result.get("total_chunks", 0),
+                                    "768",
+                                    "Mean" if use_pooling else "CLS",
+                                    "Yes" if normalize else "No",
+                                    f"{result.get('total_chunks', 0) * 768 * 4 / 1024 / 1024:.2f} MB"
+                                ]
+                            }
+                            st.dataframe(embedding_info, use_container_width=True, hide_index=True)
+                            
+                            st.divider()
+                            
+                            st.markdown("### 📝 Chunks Processed")
+                            chunk_table = []
+                            for i, chunk in enumerate(result.get("preview_chunks", []), 1):
+                                chunk_table.append({
+                                    "Chunk #": i,
+                                    "Size (chars)": chunk.get("length", 0),
+                                    "Preview": chunk.get("text", "")[:60] + "..."
+                                })
+                            st.dataframe(chunk_table, use_container_width=True, hide_index=True)
+                            
+                            st.info("✅ Embeddings are now stored in Chroma Vector Database and ready for semantic search!")
+                        else:
+                            st.error(f"❌ Error: {result.get('error')}")
+            
+            with col2:
+                st.markdown("### ℹ️ About Embeddings")
+                st.info("""
+                **What are embeddings?**
+                - Convert text to numerical vectors
+                - Enable semantic search
+                - ~768 dimensions per chunk
+                - Stored in vector database
+                
+                **Benefits:**
+                - Fast retrieval
+                - Semantic similarity
+                - Multi-language support
+                - RAG foundation
+                """)
+
+
+# Ask Page
+elif st.session_state.page == "Ask":
+    st.title("❓ Ask Questions")
+
+    if not st.session_state.api_connected:
+        st.error("❌ Backend is offline!")
+    else:
+        documents, count = get_documents()
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            if count == 0:
+                st.warning("⚠️ No documents uploaded yet. Upload and chunk at least one file first.")
+            else:
+                st.markdown("### Ask from your document knowledge base")
+
+                doc_options = {"All documents": None}
+                for doc in documents:
+                    label = f"{doc.get('original_filename', 'Unknown')} ({doc.get('document_id', '')[:8]}...)"
+                    doc_options[label] = doc.get("document_id")
+
+                selected_doc_label = st.selectbox("Search scope", list(doc_options.keys()))
+                selected_doc_id = doc_options[selected_doc_label]
+
+                top_k = st.slider("Top chunks to retrieve", 1, 10, 5, 1)
+                query = st.text_area(
+                    "Your question",
+                    placeholder="Example: What are the key findings and recommendations in this document?",
+                    height=120,
+                )
+
+                if st.button("Ask", type="primary", use_container_width=True):
+                    if not query.strip():
+                        st.warning("Please enter a question.")
+                    else:
+                        with st.spinner("Retrieving context and generating answer..."):
+                            result = ask_question(query.strip(), selected_doc_id, top_k)
+
+                        answer = result.get("answer")
+                        source_list = result.get("sources", [])
+                        retrieved_chunks = result.get("retrieved_chunks", 0)
+
+                        # Backend can return success=False with an informative fallback answer
+                        # when no relevant chunks are found. Show that answer instead of generic error.
+                        if answer:
+                            if result.get("success"):
+                                st.success("Answer generated")
+                            else:
+                                st.warning("No strong match found. Showing best available response.")
+
+                            st.markdown("### Answer")
+                            st.write(answer)
+
+                            m1, m2 = st.columns(2)
+                            with m1:
+                                st.metric("Retrieved Chunks", retrieved_chunks)
+                            with m2:
+                                st.metric("Sources", len(source_list))
+
+                            if source_list:
+                                st.markdown("### Sources")
+                                source_rows = []
+                                for src in source_list:
+                                    source_rows.append({
+                                        "#": src.get("index"),
+                                        "Document": src.get("document_id", "unknown"),
+                                        "Chunk": src.get("chunk_index", "-"),
+                                        "Page": src.get("page") if src.get("page") is not None else "-",
+                                        "Similarity": src.get("similarity", "-"),
+                                    })
+                                st.dataframe(source_rows, use_container_width=True, hide_index=True)
+                        else:
+                            error_text = result.get("error") or result.get("detail") or str(result)
+                            st.error(f"❌ Could not answer question: {error_text}")
+
+        with col2:
+            st.markdown("### Tips")
+            st.info(
+                """
+                Ask specific questions for better retrieval:
+
+                - What are the main causes of climate change?
+                - Summarize the methodology section.
+                - What limitations are mentioned?
+                - List key concepts with definitions.
+                """
+            )
+
+
+# Summary Page (Placeholder)
+elif st.session_state.page == "Summary":
+    st.title("📝 Generate Summaries")
+    st.info("Auto-summarization feature - Coming soon!")
+
+
+# Quiz Page (Placeholder)
+elif st.session_state.page == "Quiz":
+    st.title("🎓 Generate Quizzes")
+    st.info("Quiz generation with human approval - Coming soon!")
+
+
+# Citations Page (Placeholder)
+elif st.session_state.page == "Citations":
+    st.title("🔗 Citations")
+    st.info("Citation tracking and bibliography generation - Coming soon!")
 

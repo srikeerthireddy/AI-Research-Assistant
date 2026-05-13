@@ -14,6 +14,7 @@ from pydantic import BaseModel
 import os
 from app.config import API_HOST, API_PORT, OPENAI_API_KEY
 from app.services.document_service import DocumentService
+from app.api.documents_routes import router as documents_router
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -36,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include clean API routes
+app.include_router(documents_router)
 
 # ==================== Lazy Loading for Heavy Services ====================
 # These are initialized on-demand to avoid startup freeze
@@ -386,14 +390,30 @@ async def ask_question(request: QueryRequest):
         logger.info(f"Question: {request.query[:80]}")
         
         rag_workflow = get_rag_workflow()
-        result = rag_workflow.answer_question(request.query, request.document_id)
+        result = rag_workflow.answer_question(
+            request.query,
+            request.document_id,
+            request.top_k,
+        )
+        workflow_result = result.get("result", {})
+        status = workflow_result.get("status")
+        answer = workflow_result.get("answer")
+        error = workflow_result.get("error")
+
+        if not answer:
+            if status == "no_sources":
+                answer = "I couldn't find relevant information in the indexed document chunks for this question."
+            elif status == "error":
+                answer = f"Unable to generate answer right now. {error or 'Please check backend logs and model/API configuration.'}"
         
         return {
-            "success": result.get("result", {}).get("status") == "success",
+            "success": status == "success",
+            "status": status,
             "query": request.query,
-            "answer": result.get("result", {}).get("answer"),
-            "sources": result.get("result", {}).get("sources", []),
-            "retrieved_chunks": result.get("result", {}).get("retrieved_chunks", 0)
+            "answer": answer,
+            "error": error,
+            "sources": result.get("sources", []),
+            "retrieved_chunks": workflow_result.get("retrieved_chunks", 0)
         }
     except Exception as e:
         logger.error(f"Error answering question: {str(e)}")
