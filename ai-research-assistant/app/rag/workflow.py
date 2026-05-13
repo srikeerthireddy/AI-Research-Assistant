@@ -174,13 +174,27 @@ class RAGWorkflow:
         
         query = state.get("query", "")
         document_id = state.get("document_id")
+        action = state.get("action", "answer")
         
-        result = self.citation_agent.get_citations_for_query(query, document_id)
-        
+        citation_result = self.citation_agent.get_citations_for_query(query, document_id)
+
+        # For answer/summarize flows, keep the original agent result and only enrich sources.
+        if action in ["answer", "summarize"]:
+            existing_sources = state.get("sources", []) or []
+            citation_sources = citation_result.get("citations", [])
+            merged_sources = existing_sources if existing_sources else citation_sources
+
+            return {
+                **state,
+                "citations": citation_result,
+                "sources": merged_sources,
+            }
+
+        # For cite action, citations are the primary output.
         return {
             **state,
-            "result": result,
-            "sources": result.get("citations", [])
+            "result": citation_result,
+            "sources": citation_result.get("citations", []),
         }
     
     def _format_output(self, state: Dict) -> Dict:
@@ -230,9 +244,9 @@ class RAGWorkflow:
                 "result": None
             }
     
-    def answer_question(self, query: str, document_id: Optional[str] = None) -> Dict:
+    def answer_question(self, query: str, document_id: Optional[str] = None, top_k: int = 5) -> Dict:
         """Wrapper for Q&A workflow"""
-        return self.execute(query, action="answer", document_id=document_id)
+        return self.execute(query, action="answer", document_id=document_id, top_k=top_k)
     
     def summarize(self, document_id: str) -> Dict:
         """Wrapper for summarization workflow"""
@@ -266,19 +280,23 @@ class RAGWorkflow:
             from app.services.chunker import TextProcessor
             chunker = TextProcessor()
             
-            # Chunk text
-            chunks = chunker.chunk_text(text_content, chunk_size=500, overlap=100)
+            # Chunk text using the current chunker API
+            chunks = chunker.split_into_chunks(text_content, chunk_size=500, overlap=100)
             
             # Prepare chunks with embeddings
             chunks_with_embeddings = []
-            for i, chunk_text in enumerate(chunks):
+            for i, chunk in enumerate(chunks):
+                chunk_text = chunk.get("text", "")
+                if not chunk_text.strip():
+                    continue
+
                 embedding = self.embeddings.embed_text(chunk_text)
                 chunks_with_embeddings.append({
                     "text": chunk_text,
                     "embedding": embedding,
                     "metadata": {
                         "page": page_num,
-                        "chunk_number": i
+                        "chunk_number": i,
                     }
                 })
             
