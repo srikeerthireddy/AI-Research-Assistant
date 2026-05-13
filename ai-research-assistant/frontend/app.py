@@ -293,22 +293,70 @@ if page == "Dashboard":
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### 📋 Quick Actions")
+        st.markdown("### 📋 Quick Start")
         st.write("""
-        - **Upload**: Add new PDFs/TXT files
-        - **Ask**: Query documents with RAG
-        - **Summarize**: Auto-generate summaries
-        - **Quiz**: Create quizzes with approval workflow
+        **1. Upload Documents**
+        → Upload PDF or TXT files to get started
+        
+        **2. Ask Questions**
+        → Query documents using semantic search
+        
+        **3. Get Insights**
+        → Summaries, quizzes, citations, analysis
         """)
     
     with col2:
-        st.markdown("### 🎯 System Phases")
+        st.markdown("### ✅ Architecture Layers")
         st.write("""
-        - ✅ Phase 4: Embeddings (sentence-transformers)
-        - ✅ Phase 5: Vector DB (Chroma)
-        - ✅ Phase 6: Retrieval (semantic search)
-        - ✅ Phase 7: Generation (context-only LLM)
-        - ✅ Phase 8: Multi-Agent (LangGraph)
+        **Data Layer**: Chroma DB + Vector Embeddings
+        
+        **AI Layer**: LangGraph Multi-Agent Orchestration
+        
+        **API Layer**: FastAPI REST Endpoints
+        
+        **UI Layer**: Streamlit Frontend Interface
+        """)
+    
+    st.divider()
+    
+    st.markdown("### 🚀 System Overview")
+    
+    phase_col1, phase_col2, phase_col3, phase_col4 = st.columns(4)
+    
+    with phase_col1:
+        st.markdown("""
+        **Phase 4**
+        
+        Embeddings
+        
+        sentence-transformers
+        """)
+    
+    with phase_col2:
+        st.markdown("""
+        **Phase 5**
+        
+        Vector DB
+        
+        Chroma Storage
+        """)
+    
+    with phase_col3:
+        st.markdown("""
+        **Phase 6**
+        
+        Retrieval
+        
+        Semantic Search
+        """)
+    
+    with phase_col4:
+        st.markdown("""
+        **Phase 7-8**
+        
+        Generation + Agents
+        
+        LangGraph
         """)
     
     st.divider()
@@ -324,7 +372,8 @@ if page == "Dashboard":
             with cols[2]:
                 st.caption(doc['upload_time'][:10])
     else:
-        st.info("No documents yet. Start by uploading a PDF or TXT file.")
+        st.info("📋 No documents yet. Upload a PDF or TXT file to get started!")
+
 
 elif page == "Upload":
     st.header("📤 Upload Documents")
@@ -656,63 +705,251 @@ elif page == "Citations":
                 st.error(f"Error: {str(e)}")
 
 elif page == "About":
-    st.header("ℹ️ About")
+    st.header("ℹ️ About This Capstone Project")
     
     st.markdown("""
-    ### AI Research Assistant
+    ### AI Research Assistant for Students & Professionals
     
-    A production-grade Multi-Agent RAG (Retrieval-Augmented Generation) system built for students and professionals.
+    **A Production-Grade Multi-Agent RAG (Retrieval-Augmented Generation) System**
     
-    #### Phases Implemented
+    This capstone project brings together advanced AI concepts into a real-world application that combines:
+    - Document intelligence
+    - Multi-agent orchestration
+    - Human-in-the-loop workflows
+    - Production-grade architecture
     
-    - **Phase 4**: Embeddings using sentence-transformers (all-MiniLM-L6-v2)
-    - **Phase 5**: Vector Database (Chroma DB) for semantic search
-    - **Phase 6**: Retrieval System for context-based document search
-    - **Phase 7**: Generation with OpenAI (context-only to prevent hallucination)
-    - **Phase 8**: Multi-Agent System with LangGraph orchestration
+    Think of it as: **ChatPDF + Perplexity + NotebookLM combined**
     
-    #### Features
+    ---
     
-    - 📤 **Document Upload**: PDF and TXT file support
-    - ❓ **Question Answering**: RAG-powered semantic search
-    - 📄 **Summarization**: Auto-generate document summaries
-    - 🎓 **Quiz Generation**: MCQ creation with human approval
-    - 📚 **Citations**: Source tracking and bibliography generation
-    - 🔗 **Document Comparison**: Compare information across documents
+    ### ✅ Topics Covered in This Project
     
-    #### Agents
-    
-    1. **Research Agent**: Answer questions, compare documents, cross-document search
-    2. **Summarizer Agent**: Generate summaries, extract key points
-    3. **Quiz Agent**: Generate quizzes with human-in-the-loop approval
-    4. **Citation Agent**: Manage citations and references
-    
-    #### Tech Stack
-    
-    - **Backend**: FastAPI, LangGraph, OpenAI
-    - **Vector DB**: Chroma DB
-    - **Embeddings**: sentence-transformers
-    - **Frontend**: Streamlit
-    - **Orchestration**: LangGraph (StateGraph)
-    
-    #### API Endpoints
-    
-    - `POST /api/documents/upload` - Upload & embed document
-    - `POST /api/documents/{id}/analyze` - Full RAG analysis
-    - `POST /api/ask` - Ask question with citations
-    - `POST /api/summary` - Generate summary
-    - `POST /api/quiz` - Generate quiz
-    - `POST /api/citations` - Get citations
-    
-    #### Features Highlights
-    
-    ✅ **Hallucination Prevention**: Answers only from retrieved context  
-    ✅ **Human-in-the-Loop**: Quiz approval before release  
-    ✅ **Multi-Agent**: Specialized agents for different tasks  
-    ✅ **LangGraph Orchestration**: State-based workflow management  
-    ✅ **Semantic Search**: Context-aware document retrieval  
-    ✅ **Citation Tracking**: Full source attribution  
     """)
     
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Core AI & ML Concepts:**
+        - 🧠 LLM Basics (Transformers, Embeddings)
+        - ✍️ Prompt Engineering (Few-shot, CoT)
+        - 📚 RAG (Retrieval-Augmented Generation)
+        - 🎯 Embeddings (sentence-transformers)
+        - 🗄️ Vector Databases (Chroma)
+        - ✂️ Chunking Strategies (Fixed, Semantic)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Advanced Architecture:**
+        - 🤖 Agents (Specialized & Orchestrated)
+        - 🔗 LangGraph (State-based Workflows)
+        - 👥 Human-in-the-Loop Patterns
+        - 📄 PDF/Document Parsing
+        - 🚀 FastAPI Basics
+        - 🌐 REST API Design
+        """)
+    
+    st.markdown("""
+    ---
+    
+    ### 🎯 Topics Coming Next
+    
+    - **FastAPI Deployment**: Production server setup
+    - **Deployment Concepts**: Docker, cloud hosting
+    - **Scaling**: Load balancing, caching strategies
+    - **Monitoring**: Error tracking, performance metrics
+    
+    ---
+    
+    ### 📊 Project Features
+    
+    """)
+    
+    feat_col1, feat_col2, feat_col3 = st.columns(3)
+    
+    with feat_col1:
+        st.markdown("""
+        **Core Features:**
+        - 📤 PDF/TXT Upload
+        - ❓ Q&A with Citations
+        - 📄 Auto-Summary
+        """)
+    
+    with feat_col2:
+        st.markdown("""
+        **Advanced Features:**
+        - 🎓 Quiz Generation
+        - 📚 Citation Tracking
+        - 🔗 Multi-Document Search
+        """)
+    
+    with feat_col3:
+        st.markdown("""
+        **Intelligence:**
+        - 🤖 4 Specialized Agents
+        - 👁️ No Hallucination
+        - ✅ Approved Workflows
+        """)
+    
+    st.markdown("""
+    ---
+    
+    ### 🏗️ System Architecture
+    
+    """)
+    
+    st.code("""
+    User Uploads PDF
+         ↓
+    Document Parser (PyPDF2 + OCR)
+         ↓
+    Semantic Chunking
+         ↓
+    sentence-transformers Embeddings
+         ↓
+    Chroma Vector DB Storage
+         ↓
+    LangGraph Agent Orchestration
+         ↓
+    Multi-Agent Workflow
+         ├→ Research Agent (Q&A)
+         ├→ Summarizer Agent
+         ├→ Quiz Agent (Human Approval)
+         └→ Citation Agent
+         ↓
+    LLM Generation (Context-Only)
+         ↓
+    FastAPI Endpoint
+         ↓
+    Streamlit Frontend
+    """, language="text")
+    
+    st.markdown("""
+    ---
+    
+    ### 🔧 Implementations by Phase
+    
+    """)
+    
+    phases = {
+        "Phase 1": "📤 Document Upload - PDF/TXT ingestion",
+        "Phase 2": "📝 Parsing - PyPDF2, PyMuPDF, LangChain loaders",
+        "Phase 3": "✂️ Chunking - Fixed, semantic, overlap strategies",
+        "Phase 4": "🧬 Embeddings - sentence-transformers (all-MiniLM-L6-v2)",
+        "Phase 5": "🗄️ Vector DB - Chroma DB storage & indexing",
+        "Phase 6": "🔍 Retrieval - Semantic search & context retrieval",
+        "Phase 7": "💬 Generation - Context-only LLM (hallucination prevention)",
+        "Phase 8": "🤖 Multi-Agent - LangGraph orchestration",
+    }
+    
+    phase_col1, phase_col2 = st.columns(2)
+    
+    for i, (phase, desc) in enumerate(phases.items()):
+        if i % 2 == 0:
+            with phase_col1:
+                st.write(f"✅ **{phase}**: {desc}")
+        else:
+            with phase_col2:
+                st.write(f"✅ **{phase}**: {desc}")
+    
+    st.markdown("""
+    ---
+    
+    ### 🎓 Specialized Agents
+    
+    """)
+    
+    agent_col1, agent_col2 = st.columns(2)
+    
+    with agent_col1:
+        st.markdown("""
+        **Research Agent**
+        - Answer questions from documents
+        - Compare across documents
+        - Extract connections
+        
+        **Citation Agent**
+        - Track all sources
+        - Generate bibliography
+        - Maintain references
+        """)
+    
+    with agent_col2:
+        st.markdown("""
+        **Summarizer Agent**
+        - Create concise notes
+        - Extract key points
+        - Generate outlines
+        
+        **Quiz Agent**
+        - Generate MCQs
+        - With human approval
+        - Learning mode
+        """)
+    
+    st.markdown("""
+    ---
+    
+    ### 💼 Why This Project?
+    
+    """)
+    
+    benefit_col1, benefit_col2, benefit_col3 = st.columns(3)
+    
+    with benefit_col1:
+        st.markdown("""
+        **Recruiter Friendly** 🎯
+        
+        "Built production-grade RAG AI assistant using LangGraph, Chroma, FastAPI, and OpenAI"
+        """)
+    
+    with benefit_col2:
+        st.markdown("""
+        **High Learning Density** 📚
+        
+        Every AI/ML topic connects naturally into the system
+        """)
+    
+    with benefit_col3:
+        st.markdown("""
+        **Industry Realistic** 🏢
+        
+        Similar to: enterprise AI assistants, knowledge bots, copilots
+        """)
+    
+    st.markdown("""
+    ---
+    
+    ### 🛠️ Tech Stack
+    
+    """)
+    
+    tech_col1, tech_col2, tech_col3 = st.columns(3)
+    
+    with tech_col1:
+        st.markdown("""
+        **Backend**
+        - FastAPI
+        - LangGraph
+        - OpenAI API
+        """)
+    
+    with tech_col2:
+        st.markdown("""
+        **Data & AI**
+        - Chroma DB
+        - sentence-transformers
+        - PyPDF2 + PyMuPDF
+        """)
+    
+    with tech_col3:
+        st.markdown("""
+        **Frontend & DevOps**
+        - Streamlit
+        - Docker
+        - REST APIs
+        """)
+    
     st.divider()
-    st.caption("Built for education and research • 2026")
+    st.caption("Capstone Project • AI Research Assistant • 2026")
