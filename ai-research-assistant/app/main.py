@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import os
-
 from app.config import API_HOST, API_PORT, OPENAI_API_KEY
 from app.services.document_service import DocumentService
 
