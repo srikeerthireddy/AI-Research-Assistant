@@ -447,6 +447,7 @@ with st.sidebar:
         "📊 Dashboard": "Dashboard",
         "📤 Upload Documents": "Upload",
         "📁 Manage Documents": "Manage",
+        "🔬 Chunk & Analyze": "Analyze",
         "❓ Ask Question": "Question",
         "📝 Summarize": "Summarize",
         "🎓 Generate Quiz": "Quiz",
@@ -726,6 +727,82 @@ elif st.session_state.page == "Manage":
                             st.session_state.documents_cache = []
                             time.sleep(1)
                             st.rerun()
+
+# ==================== Analyze / Chunking Page ====================
+elif st.session_state.page == "Analyze":
+    render_header(
+        "Chunking & Analyze",
+        "Run chunking strategies and analyze document structure/embeddings",
+        "🔬"
+    )
+
+    if not st.session_state.api_connected:
+        st.error("❌ Backend offline")
+    elif doc_count == 0:
+        st.info("📭 Upload documents first to analyze.")
+    else:
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            selected_doc = st.selectbox(
+                "Select a document to analyze:",
+                [d['original_filename'] for d in documents],
+                label_visibility="collapsed"
+            )
+            doc_id = next((d['document_id'] for d in documents if d['original_filename'] == selected_doc), None)
+
+            st.markdown("### Chunking Parameters")
+            chunk_size = st.number_input("Chunk size (characters)", min_value=200, max_value=20000, value=2000, step=100)
+            chunk_overlap = st.number_input("Chunk overlap (characters)", min_value=0, max_value=2000, value=200, step=50)
+            method = st.selectbox("Chunking method:", ["fixed", "semantic"], index=0)
+            compute_embeddings = st.checkbox("Compute embeddings after chunking", value=True)
+
+            st.markdown("### Analyze Options")
+            preview_count = st.slider("Preview chunks:", 1, 10, 3)
+
+        with col2:
+            st.markdown("### Actions")
+            if st.button("⚙️ Run Chunking & Analyze", use_container_width=True, type="primary"):
+                with st.spinner("⏳ Running chunking and analysis..."):
+                    payload = {
+                        "chunk_size": int(chunk_size),
+                        "chunk_overlap": int(chunk_overlap),
+                        "method": method,
+                        "compute_embeddings": compute_embeddings,
+                        "preview_count": int(preview_count)
+                    }
+                    response = api_call("POST", f"/api/documents/{doc_id}/analyze", timeout=TIMEOUT_LONG, json=payload)
+
+                    if response and response.status_code == 200:
+                        result = response.json()
+                        if result.get('success'):
+                            st.success("✅ Analysis complete")
+                            st.markdown("#### 🔢 Summary Metrics")
+                            metrics = result.get('metrics', {})
+                            col_a, col_b, col_c = st.columns(3)
+                            with col_a:
+                                render_metric("Chunks", str(metrics.get('num_chunks', 'N/A')), "📚")
+                            with col_b:
+                                render_metric("Avg chunk length", str(metrics.get('avg_chunk_length', 'N/A')))
+                            with col_c:
+                                render_metric("Embeddings", str(metrics.get('embeddings_computed', False)))
+
+                            if result.get('preview_chunks'):
+                                st.markdown("#### 👁️ Chunk Previews")
+                                for i, ch in enumerate(result['preview_chunks'], 1):
+                                    with st.expander(f"Chunk {i} — {ch.get('length', 0)} chars"):
+                                        st.write(ch.get('text', '')[:2000])
+
+                            if result.get('analysis'):
+                                st.markdown("#### 📈 Analysis Details")
+                                st.json(result.get('analysis'))
+                        else:
+                            st.warning(result.get('message', 'Analysis failed'))
+                    else:
+                        st.error(f"❌ Failed: {response.text if response else 'Connection error'}")
+
+        st.divider()
+        st.caption("Chunking supports 'fixed' and 'semantic' methods; semantic requires backend support for sentence splitting or embeddings.")
 
 # ==================== Ask Question Page ====================
 elif st.session_state.page == "Question":
