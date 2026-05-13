@@ -22,7 +22,7 @@ from urllib.parse import quote
 import base64
 
 # ==================== Configuration ====================
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+API_BASE_URL = os.getenv("API_BASE_URL", "").rstrip("/")
 TIMEOUT_SHORT = 10
 TIMEOUT_LONG = 180
 GOOGLE_SEARCH_API = None  # Set your API key in .env
