@@ -1,9 +1,15 @@
 """
 Document Comparison Agent
 Enables semantic comparison across multiple documents
-Uses LangGraph for orchestration
+Uses LangGraph for orchestration (optional)
 """
-from langgraph.graph import StateGraph, END
+try:
+    from langgraph.graph import StateGraph, END
+    HAS_LANGGRAPH = True
+except Exception:
+    StateGraph = None
+    END = None
+    HAS_LANGGRAPH = False
 from typing import TypedDict, List, Dict, Any, Optional
 from app.services.retriever import Retriever
 from app.services.generator import Generator
