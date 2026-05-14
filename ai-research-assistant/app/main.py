@@ -97,6 +97,13 @@ class QuizRequest(BaseModel):
     require_approval: bool = True
 
 
+class QuizQueryRequest(BaseModel):
+    """Request model for query-based quiz generation"""
+    query: str
+    document_id: str = None
+    num_questions: int = 5
+
+
 class SummaryRequest(BaseModel):
     """Request model for summarization"""
     document_id: str = None
@@ -473,6 +480,38 @@ async def generate_quiz(request: QuizRequest):
         }
     except Exception as e:
         logger.error(f"Error generating quiz: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quiz/query")
+async def generate_quiz_from_query(request: QuizQueryRequest):
+    """
+    Generate quiz from a topic prompt or ask-style query.
+
+    This route lets the frontend create quizzes from a question/topic instead of
+    only from a selected document.
+    """
+    try:
+        logger.info(f"Generating query-based quiz: {request.query[:80]}")
+
+        rag_workflow = get_rag_workflow()
+        result = rag_workflow.generate_quiz_for_query(
+            request.query,
+            request.document_id,
+            request.num_questions,
+        )
+
+        return {
+            "success": result.get("status") == "success",
+            "status": result.get("status"),
+            "query": request.query,
+            "document_id": request.document_id,
+            "questions": result.get("questions", []),
+            "num_questions": result.get("num_questions", 0),
+            "message": result.get("message", "Quiz generated successfully"),
+        }
+    except Exception as e:
+        logger.error(f"Error generating quiz from query: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
