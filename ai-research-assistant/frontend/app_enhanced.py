@@ -907,9 +907,15 @@ elif st.session_state.page == "Analyze":
                     )
                     selected_doc_id = doc_names[selected_name]
                 
-                if st.button("🔬 Analyze", use_container_width=True, type="primary"):
+                analyze_disabled = selected_doc_id is None
+                if analyze_disabled:
+                    st.info("Select a document to enable analysis.")
+                if st.button("🔬 Analyze", use_container_width=True, type="primary", disabled=analyze_disabled):
                     with st.spinner("Analyzing..."):
-                        result = analyze_document(selected_doc_id)
+                        if selected_doc_id is None:
+                            st.warning("No document selected. Choose a document first.")
+                        else:
+                            result = analyze_document(selected_doc_id)
                         
                         if result.get("success"):
                             st.success("✅ Analysis complete!")
@@ -1034,15 +1040,21 @@ elif st.session_state.page == "Embed":
                 use_pooling = st.checkbox("Use Mean Pooling", value=True, help="Average embeddings across tokens")
                 normalize = st.checkbox("Normalize Embeddings", value=True, help="L2 normalization for similarity")
                 
-                if st.button("🚀 Compute Embeddings", use_container_width=True, type="primary"):
+                embed_disabled = selected_doc_id is None
+                if embed_disabled:
+                    st.info("Select a document to enable embedding computation.")
+                if st.button("🚀 Compute Embeddings", use_container_width=True, type="primary", disabled=embed_disabled):
                     with st.spinner("Computing embeddings..."):
-                        result = chunk_document(
-                            selected_doc_id,
-                            chunk_size=chunk_size,
-                            chunk_overlap=chunk_overlap,
-                            method="fixed",
-                            preview_count=3
-                        )
+                        if selected_doc_id is None:
+                            st.warning("No document selected. Choose a document first.")
+                        else:
+                            result = chunk_document(
+                                selected_doc_id,
+                                chunk_size=chunk_size,
+                                chunk_overlap=chunk_overlap,
+                                method="fixed",
+                                preview_count=3
+                            )
                         
                         if result.get("success"):
                             st.success("✅ Embeddings computed!")
@@ -1249,9 +1261,15 @@ elif st.session_state.page == "Quiz":
                         help="Keep this enabled to stage the quiz before release.",
                     )
 
-                    if st.button("Create Quiz", type="primary", use_container_width=True):
+                    quiz_disabled = selected_doc_id is None
+                    if quiz_disabled:
+                        st.info("Select a document to enable quiz generation.")
+                    if st.button("Create Quiz", type="primary", use_container_width=True, disabled=quiz_disabled):
                         with st.spinner("Generating quiz..."):
-                            result = generate_quiz(selected_doc_id, question_count, require_approval)
+                            if selected_doc_id is None:
+                                st.warning("No document selected. Choose a document first.")
+                            else:
+                                result = generate_quiz(selected_doc_id, question_count, require_approval)
 
                         if result.get("success"):
                             st.success(result.get("message", "Quiz generated successfully"))
