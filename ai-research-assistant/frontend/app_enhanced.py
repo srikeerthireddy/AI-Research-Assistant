@@ -889,18 +889,23 @@ elif st.session_state.page == "Analyze":
             with col1:
                 st.markdown("### Select Document")
                 doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
-                
-                if st.session_state.selected_doc in [d["document_id"] for d in documents]:
-                    default_idx = [d["document_id"] for d in documents].index(st.session_state.selected_doc)
+                keys = list(doc_names.keys())
+                if not keys:
+                    st.warning("⚠️ No valid documents available for analysis.")
+                    selected_doc_id = None
                 else:
-                    default_idx = 0
-                
-                selected_name = st.selectbox(
-                    "Choose document:",
-                    list(doc_names.keys()),
-                    index=default_idx
-                )
-                selected_doc_id = doc_names[selected_name]
+                    if st.session_state.selected_doc in [d["document_id"] for d in documents]:
+                        default_idx = [d["document_id"] for d in documents].index(st.session_state.selected_doc)
+                    else:
+                        default_idx = 0
+                    if default_idx >= len(keys):
+                        default_idx = 0
+                    selected_name = st.selectbox(
+                        "Choose document:",
+                        keys,
+                        index=default_idx
+                    )
+                    selected_doc_id = doc_names[selected_name]
                 
                 if st.button("🔬 Analyze", use_container_width=True, type="primary"):
                     with st.spinner("Analyzing..."):
@@ -1010,8 +1015,13 @@ elif st.session_state.page == "Embed":
             with col1:
                 st.markdown("### Select Document to Embed")
                 doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
-                selected_name = st.selectbox("Choose document:", list(doc_names.keys()), key="embed_doc_select")
-                selected_doc_id = doc_names[selected_name]
+                keys = list(doc_names.keys())
+                if not keys:
+                    st.warning("⚠️ No valid documents available to embed.")
+                    selected_doc_id = None
+                else:
+                    selected_name = st.selectbox("Choose document:", keys, key="embed_doc_select")
+                    selected_doc_id = doc_names[selected_name]
                 
                 st.markdown("### Embedding Options")
                 
@@ -1225,8 +1235,13 @@ elif st.session_state.page == "Quiz":
                 if mode == "Document":
                     st.markdown("### Select Document")
                     doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
-                    selected_name = st.selectbox("Choose document:", list(doc_names.keys()), key="quiz_doc_select")
-                    selected_doc_id = doc_names[selected_name]
+                    keys = list(doc_names.keys())
+                    if not keys:
+                        st.warning("⚠️ No valid documents available for quiz generation.")
+                        selected_doc_id = None
+                    else:
+                        selected_name = st.selectbox("Choose document:", keys, key="quiz_doc_select")
+                        selected_doc_id = doc_names[selected_name]
                     question_count = st.slider("Number of questions", 3, 10, 5, 1)
                     require_approval = st.checkbox(
                         "Require human approval",
