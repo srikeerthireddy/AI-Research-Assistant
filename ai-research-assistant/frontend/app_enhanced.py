@@ -8,10 +8,15 @@ import json
 import os
 from typing import Optional, Dict, List, Tuple
 from datetime import datetime
-from dotenv import load_dotenv
 
 # ==================== Load Environment Variables ====================
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available (e.g., on Streamlit Cloud)
+    # Environment variables will be loaded from system or Streamlit secrets
+    pass
 
 # ==================== Configuration ====================
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
