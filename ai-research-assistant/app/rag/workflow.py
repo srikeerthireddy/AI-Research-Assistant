@@ -6,7 +6,13 @@ import logging
 from typing import Dict, List, Any, Optional
 import json
 
-from langgraph.graph import StateGraph, END
+try:
+    from langgraph.graph import StateGraph, END
+    HAS_LANGGRAPH = True
+except ImportError:
+    StateGraph = None
+    END = None
+    HAS_LANGGRAPH = False
 from app.agents.research_agent import ResearchAgent
 from app.agents.summarizer_agent import SummarizerAgent
 from app.agents.quiz_agent import QuizAgent
@@ -59,12 +65,17 @@ class RAGWorkflow:
         self.vector_db = ChromaVectorDB()
         
         # Build workflow graph
-        self.graph = self._build_workflow_graph()
+        self.graph = self._build_workflow_graph() if HAS_LANGGRAPH else None
+        if not HAS_LANGGRAPH:
+            logger.warning("LangGraph is not installed. Using direct agent execution fallback.")
         
         logger.info("✅ RAG Workflow initialized")
     
     def _build_workflow_graph(self):
         """Build LangGraph workflow"""
+        if not HAS_LANGGRAPH:
+            return None
+
         workflow = StateGraph(dict)
         
         # Define nodes
@@ -154,12 +165,15 @@ class RAGWorkflow:
         """Quiz generation node"""
         logger.info(f"Quiz Node: Processing")
         
+        query = state.get("query", "")
         document_id = state.get("document_id")
         num_questions = state.get("num_questions", 5)
         require_approval = state.get("require_approval", True)
         
         if document_id:
             result = self.quiz_agent.generate_quiz(document_id, num_questions, require_approval)
+        elif query:
+            result = self.quiz_agent.generate_quiz_for_query(query, document_id, num_questions)
         else:
             result = {"status": "error", "message": "Document ID required for quiz"}
         
@@ -221,6 +235,9 @@ class RAGWorkflow:
         """
         try:
             logger.info(f"🚀 Executing RAG Workflow: action={action}")
+
+            if not HAS_LANGGRAPH or self.graph is None:
+                return self._execute_fallback(query, action, document_id, **kwargs)
             
             # Prepare input state
             input_state = {
@@ -243,6 +260,52 @@ class RAGWorkflow:
                 "error": str(e),
                 "result": None
             }
+
+    def _execute_fallback(self, query: str, action: str = "answer", document_id: Optional[str] = None, **kwargs) -> Dict:
+        """Execute workflow without LangGraph when the dependency is unavailable."""
+        try:
+            if action == "summarize":
+                if document_id:
+                    result = self.summarizer_agent.summarize_document(document_id)
+                elif query:
+                    result = self.summarizer_agent.summarize_query_results(query, document_id)
+                else:
+                    result = {"status": "error", "message": "No document or query provided"}
+                return {"query": query, "document_id": document_id, "action": action, "result": result}
+
+            if action == "quiz":
+                num_questions = kwargs.get("num_questions", 5)
+                require_approval = kwargs.get("require_approval", True)
+                if document_id:
+                    result = self.quiz_agent.generate_quiz(document_id, num_questions, require_approval)
+                elif query:
+                    result = self.quiz_agent.generate_quiz_for_query(query, document_id, num_questions)
+                else:
+                    result = {"status": "error", "message": "Document ID or query required for quiz"}
+                return {"query": query, "document_id": document_id, "action": action, "result": result}
+
+            if action == "cite":
+                result = self.citation_agent.get_citations_for_query(query, document_id)
+                return {
+                    "query": query,
+                    "document_id": document_id,
+                    "action": action,
+                    "result": result,
+                    "sources": result.get("citations", []),
+                }
+
+            top_k = kwargs.get("top_k", 5)
+            result = self.research_agent.answer_query(query, document_id, top_k=top_k)
+            return {
+                "query": query,
+                "document_id": document_id,
+                "action": action,
+                "result": result,
+                "sources": result.get("sources", []),
+            }
+        except Exception as e:
+            logger.error(f"Fallback workflow error: {str(e)}")
+            return {"status": "error", "error": str(e), "result": None}
     
     def answer_question(self, query: str, document_id: Optional[str] = None, top_k: int = 5) -> Dict:
         """Wrapper for Q&A workflow"""
@@ -256,6 +319,10 @@ class RAGWorkflow:
         """Wrapper for quiz generation workflow"""
         return self.execute("", action="quiz", document_id=document_id, 
                           num_questions=num_questions, require_approval=require_approval)
+
+    def generate_quiz_for_query(self, query: str, document_id: Optional[str] = None, num_questions: int = 5) -> Dict:
+        """Wrapper for query-based quiz generation workflow"""
+        return self.execute(query, action="quiz", document_id=document_id, num_questions=num_questions, require_approval=False)
     
     def get_citations(self, query: str, document_id: Optional[str] = None) -> Dict:
         """Wrapper for citations workflow"""

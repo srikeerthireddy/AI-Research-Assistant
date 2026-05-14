@@ -353,6 +353,64 @@ def ask_question(query: str, document_id: Optional[str] = None, top_k: int = 5) 
         return {"success": False, "error": str(e)}
 
 
+def generate_quiz(document_id: str, num_questions: int = 5, require_approval: bool = True) -> Dict:
+    """Generate a quiz from a document"""
+    try:
+        payload = {
+            "document_id": document_id,
+            "num_questions": num_questions,
+            "require_approval": require_approval,
+        }
+
+        response = requests.post(
+            f"{API_BASE_URL}/api/quiz",
+            json=payload,
+            timeout=TIMEOUT_LONG,
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        try:
+            err_payload = response.json()
+            error_message = err_payload.get("error") or err_payload.get("detail") or response.text
+        except Exception:
+            error_message = response.text
+
+        return {"success": False, "error": error_message}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def generate_quiz_from_query(query: str, document_id: Optional[str] = None, num_questions: int = 5) -> Dict:
+    """Generate a quiz from an ask-style query or topic prompt"""
+    try:
+        payload = {
+            "query": query,
+            "document_id": document_id,
+            "num_questions": num_questions,
+        }
+
+        response = requests.post(
+            f"{API_BASE_URL}/api/quiz/query",
+            json=payload,
+            timeout=TIMEOUT_LONG,
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        try:
+            err_payload = response.json()
+            error_message = err_payload.get("error") or err_payload.get("detail") or response.text
+        except Exception:
+            error_message = response.text
+
+        return {"success": False, "error": error_message}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def delete_document(doc_id: str) -> bool:
     """Delete document"""
     try:
@@ -1141,10 +1199,125 @@ elif st.session_state.page == "Summary":
     st.info("Auto-summarization feature - Coming soon!")
 
 
-# Quiz Page (Placeholder)
+# Quiz Page
 elif st.session_state.page == "Quiz":
     st.title("🎓 Generate Quizzes")
-    st.info("Quiz generation with human approval - Coming soon!")
+    st.markdown("Create multiple-choice quizzes from a document or from an ask-style topic prompt.")
+
+    if not st.session_state.api_connected:
+        st.error("❌ Backend is offline!")
+    else:
+        documents, count = get_documents()
+
+        if count == 0:
+            st.warning("⚠️ Upload and chunk at least one document before generating a quiz.")
+        else:
+            mode = st.radio(
+                "Quiz source",
+                ["Document", "Topic prompt"],
+                horizontal=True,
+                help="Document quizzes use the uploaded content; topic quizzes use an ask-style prompt.",
+            )
+
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                if mode == "Document":
+                    st.markdown("### Select Document")
+                    doc_names = {doc["original_filename"]: doc["document_id"] for doc in documents}
+                    selected_name = st.selectbox("Choose document:", list(doc_names.keys()), key="quiz_doc_select")
+                    selected_doc_id = doc_names[selected_name]
+                    question_count = st.slider("Number of questions", 3, 10, 5, 1)
+                    require_approval = st.checkbox(
+                        "Require human approval",
+                        value=True,
+                        help="Keep this enabled to stage the quiz before release.",
+                    )
+
+                    if st.button("Create Quiz", type="primary", use_container_width=True):
+                        with st.spinner("Generating quiz..."):
+                            result = generate_quiz(selected_doc_id, question_count, require_approval)
+
+                        if result.get("success"):
+                            st.success(result.get("message", "Quiz generated successfully"))
+                            st.write(f"Status: {result.get('status', 'unknown')}")
+                            st.write(f"Quiz ID: {result.get('quiz_id', 'n/a')}")
+
+                            preview_questions = result.get("preview_questions") or result.get("questions") or []
+                            if preview_questions:
+                                st.markdown("### Preview Questions")
+                                for idx, question in enumerate(preview_questions, 1):
+                                    with st.expander(f"Question {idx}", expanded=(idx == 1)):
+                                        st.write(question.get("question", ""))
+                                        options = question.get("options", {})
+                                        for option_key, option_value in options.items():
+                                            st.write(f"**{option_key}.** {option_value}")
+                                        if question.get("correct_answer"):
+                                            st.caption(f"Correct answer: {question.get('correct_answer')}")
+                                        if question.get("explanation"):
+                                            st.caption(question.get("explanation"))
+                        else:
+                            st.error(f"❌ Error: {result.get('error')}")
+                else:
+                    st.markdown("### Topic Prompt")
+                    topic_query = st.text_area(
+                        "Describe the quiz topic",
+                        placeholder="Example: Create a quiz about retrieval augmented generation, embeddings, and citation quality.",
+                        height=120,
+                    )
+                    selected_doc_label = st.selectbox(
+                        "Optional document scope",
+                        ["All documents"] + [f"{doc.get('original_filename', 'Unknown')} ({doc.get('document_id', '')[:8]}...)" for doc in documents],
+                        key="quiz_topic_doc_select",
+                    )
+                    scoped_document_id = None
+                    if selected_doc_label != "All documents":
+                        scoped_document_id = next(
+                            (doc.get("document_id") for doc in documents if selected_doc_label.startswith(doc.get("original_filename", "Unknown"))),
+                            None,
+                        )
+
+                    question_count = st.slider("Number of questions", 3, 10, 5, 1, key="quiz_topic_count")
+
+                    if st.button("Create Topic Quiz", type="primary", use_container_width=True):
+                        if not topic_query.strip():
+                            st.warning("Please enter a topic prompt.")
+                        else:
+                            with st.spinner("Generating quiz from topic prompt..."):
+                                result = generate_quiz_from_query(topic_query.strip(), scoped_document_id, question_count)
+
+                            if result.get("success"):
+                                st.success(result.get("message", "Quiz generated successfully"))
+                                st.write(f"Status: {result.get('status', 'unknown')}")
+
+                                questions = result.get("questions", [])
+                                if questions:
+                                    st.markdown("### Questions")
+                                    for idx, question in enumerate(questions, 1):
+                                        with st.expander(f"Question {idx}", expanded=(idx == 1)):
+                                            st.write(question.get("question", ""))
+                                            options = question.get("options", {})
+                                            for option_key, option_value in options.items():
+                                                st.write(f"**{option_key}.** {option_value}")
+                                            if question.get("correct_answer"):
+                                                st.caption(f"Correct answer: {question.get('correct_answer')}")
+                                            if question.get("explanation"):
+                                                st.caption(question.get("explanation"))
+                            else:
+                                st.error(f"❌ Error: {result.get('error')}")
+
+            with col2:
+                st.markdown("### Quiz Tips")
+                st.info(
+                    """
+                    Good quiz prompts are specific and focused.
+
+                    - Pick one document at a time
+                    - Ask for 3 to 10 questions
+                    - Use a narrow topic prompt for better questions
+                    - Keep human approval on for review workflows
+                    """
+                )
 
 
 # Citations Page (Placeholder)
